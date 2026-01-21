@@ -13,6 +13,7 @@ def analyze_icmp_response_time(pcap_file, server_ip):
             # ตรวจสอบว่าเป็น ICMP Echo Request จาก Client ไปยัง Server
             if pkt[IP].dst == server_ip and pkt[ICMP].type == 8:
                 seq = pkt[ICMP].seq
+                # save pending. key = seq
                 pending_requests[seq] = pkt.time
 
             # ตรวจสอบว่าเป็น ICMP Echo Reply จาก Server กลับมา
@@ -20,6 +21,7 @@ def analyze_icmp_response_time(pcap_file, server_ip):
                 seq = pkt[ICMP].seq
                 if seq in pending_requests:
                     rtt = (pkt.time - pending_requests[seq]) * 1000  # แปลงเป็น ms
+                    # print(f"{pending_requests[seq]} - {pkt.time} = {rtt} ms")
                     results.append((seq, rtt))
                     del pending_requests[seq]  # ลบออกเมื่อจับคู่ได้แล้ว
 
@@ -50,5 +52,5 @@ def show_icmp_time(pcap_file, server_ip):
 if __name__ == "__main__":
     # file_input = input("ระบุชื่อไฟล์ .pcap: ")
     # server_input = input("ระบุ IP ของ Server: ")
-    # analyze_icmp_response_time("test_pcap/ICMP Test 2.pcap", "192.168.182.150")
-    show_icmp_time("test_pcap/ICMP Test 2.pcap", "192.168.182.150")
+    analyze_icmp_response_time("test_pcap/ICMP Test 2.pcap", "192.168.182.150")
+# show_icmp_time("test_pcap/ICMP Test 2.pcap", "192.168.182.150")
