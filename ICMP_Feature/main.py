@@ -52,5 +52,5 @@ def show_icmp_time(pcap_file, server_ip):
 if __name__ == "__main__":
     # file_input = input("ระบุชื่อไฟล์ .pcap: ")
     # server_input = input("ระบุ IP ของ Server: ")
-    analyze_icmp_response_time("test_pcap/ICMP Test 2.pcap", "192.168.182.150")
+    analyze_icmp_response_time("test_pcap/ICMP Test 2.pcap", "1.1.1.1")
 # show_icmp_time("test_pcap/ICMP Test 2.pcap", "192.168.182.150")
