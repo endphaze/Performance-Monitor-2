@@ -1,9 +1,20 @@
-from gns3fy import Gns3Connector
+import pyshark
 
-# เชื่อมต่อกับ GNS3 Server
-server = Gns3Connector("http://localhost:3080")
+# โหลด .pcap ไฟล์แล้วใส่ filter ip ของ server
+#
 
-# แสดงโปรเจกต์ทั้งหมด
-projects = server.get_projects()
-for project in projects:
-    print(f"Project Name: {project['name']}, ID: {project['project_id']}")
+
+cap = pyshark.FileCapture(
+    "test_pcap/TCP Test 2.pcap",
+    display_filter=f"tcp.port == 8080 and http.time",
+)
+
+
+http_times = []
+
+for p in cap:
+    time = p.http.time
+    print(round(float(time) * 1000, 2))
+
+
+cap.close()
