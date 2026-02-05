@@ -2,7 +2,6 @@ import glob
 import os
 import statistics
 import subprocess
-
 import pyshark
 
 

@@ -4,95 +4,6 @@ import re
 import subprocess
 from pathlib import Path
 
-# def filter_pcap_files(
-#     abs_file_list, src_ip="any", src_port="any", dst_ip="any", dst_port="any"
-# ):
-#     filtered_abs_paths = []
-
-#     # ฟังก์ชันช่วยแปลง 1.1.1.1 -> 1-1-1-1
-#     def format_ip(ip):
-#         return ip.replace(".", "-") if ip != "any" else "any"
-
-#     target_src_ip = format_ip(src_ip)
-#     target_dst_ip = format_ip(dst_ip)
-
-#     # Regex แบบใหม่: มองหา IP-แบบ-ขีด และ Port ที่ตามหลังด้วย _ หรือ .
-#     # มันจะมองหา [IP]_[Port]_[IP]_[Port] ตรงไหนก็ได้ในชื่อไฟล์
-#     # pattern นี้จะจับกลุ่มได้ 4 กลุ่มหลัก: SIP, SPORT, DIP, DPORT
-#     regex_pattern = r"_(?P<sip>[\d-]+)_(?P<sport>\d+)_(?P<dip>[\d-]+)_(?P<dport>\d+)\."
-#     pattern = re.compile(regex_pattern)
-
-#     for full_path in abs_file_list:
-#         file_name = os.path.basename(full_path)
-
-#         # ค้นหา pattern ภายในชื่อไฟล์ (ใช้ search แทน match เพราะ match ต้องเริ่มที่ต้นประโยค)
-#         match = pattern.search(file_name)
-
-#         if not match:
-#             continue
-
-#         data = match.groupdict()
-
-#         # ตรวจสอบเงื่อนไข
-#         match_src_ip = target_src_ip == "any" or target_src_ip == data["sip"]
-#         match_src_port = src_port == "any" or str(src_port) == data["sport"]
-#         match_dst_ip = target_dst_ip == "any" or target_dst_ip == data["dip"]
-#         match_dst_port = dst_port == "any" or str(dst_port) == data["dport"]
-
-#         if all([match_src_ip, match_src_port, match_dst_ip, match_dst_port]):
-#             filtered_abs_paths.append(full_path)
-
-#     return filtered_abs_paths
-
-
-# def _filter_pcap_files(
-#     abs_file_list,
-#     protocol="any",
-#     src_ip="any",
-#     src_port="any",
-#     dst_ip="any",
-#     dst_port="any",
-# ):
-#     filtered_abs_paths = []
-
-#     def format_ip(ip):
-#         return ip.replace(".", "-") if ip != "any" else "any"
-
-#     target_src_ip = format_ip(src_ip)
-#     target_dst_ip = format_ip(dst_ip)
-#     target_proto = protocol.upper() if protocol != "any" else "any"
-
-#     # Regex ใหม่:
-#     # \. จับจุดหน้าโปรโตคอล
-#     # (?P<proto>\w+) จับ TCP หรือ UDP
-#     # _ ตามด้วยกลุ่ม IP และ Port เดิม
-#     regex_pattern = r"\.(?P<proto>\w+)_(?P<sip>[\d-]+)_(?P<sport>\d+)_(?P<dip>[\d-]+)_(?P<dport>\d+)\."
-#     pattern = re.compile(regex_pattern)
-
-#     for full_path in abs_file_list:
-#         file_name = os.path.basename(full_path)
-
-#         match = pattern.search(file_name)
-#         if not match:
-#             continue
-
-#         data = match.groupdict()
-
-#         # ตรวจสอบเงื่อนไข (เพิ่ม Protocol)
-#         match_proto = target_proto == "any" or target_proto == data["proto"].upper()
-#         match_src_ip = target_src_ip == "any" or target_src_ip == data["sip"]
-#         match_src_port = src_port == "any" or str(src_port) == data["sport"]
-#         match_dst_ip = target_dst_ip == "any" or target_dst_ip == data["dip"]
-#         match_dst_port = dst_port == "any" or str(dst_port) == data["dport"]
-
-#         # ต้องผ่านทุกเงื่อนไข
-#         if all(
-#             [match_proto, match_src_ip, match_src_port, match_dst_ip, match_dst_port]
-#         ):
-#             filtered_abs_paths.append(full_path)
-
-#     return filtered_abs_paths
-
 
 def _filter_pcap_files(
     abs_file_list,
@@ -197,7 +108,7 @@ def read_pcap(
     try:
         # 3. รัน SplitCap โดยครอบเครื่องหมายคำพูดป้องกันเรื่องช่องว่างใน Path
         subprocess.run(
-            ["SplitCap.exe", "-r", abs_path, "-s", "session", "-o", output_dir],
+            ["./tools/PcapSplitter", "-f", abs_path, "-o", output_dir, "-m", "connection"],
             check=True,
         )
         print("ตัดไฟล์สำเร็จ!")
@@ -222,6 +133,7 @@ def read_pcap(
         # print(f)
         if callback:  # ถ้ามี Call Back Function
             callback(f)
+        #
     print("filterd files count", len(filterd_files))
 
-read_pcap("test_pcap/TCP Test 5.pcap", src_ip="216.198.79.67")
+# read_pcap("test_pcap/TCP Test 5.pcap", src_ip="216.198.79.67")

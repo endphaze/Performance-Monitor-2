@@ -15,6 +15,6 @@ output_dir = os.path.join(path_obj.parent, "zeek_" + pcap_name)
 os.makedirs(output_dir, exist_ok=True)
 
 # 2. สั่ง Zeek รัน โดยกำหนดจุดวางไฟล์ (cwd) ไปที่โฟลเดอร์ output
-subprocess.run(["zeek", "-C", "-r", pcap_path],)
+subprocess.run(["zeek", "-C", "-r", pcap_path], cwd=output_dir)
 
 # print(f"เสร็จแล้ว! ไฟล์ Log ทั้งหมดจะไปอยู่ที่: {output_dir}")

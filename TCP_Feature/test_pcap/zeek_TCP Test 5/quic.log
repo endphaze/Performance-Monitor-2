@@ -1,0 +1,15 @@
+#separator \x09
+#set_separator	,
+#empty_field	(empty)
+#unset_field	-
+#path	quic
+#open	2026-02-02-15-33-30
+#fields	ts	uid	id.orig_h	id.orig_p	id.resp_h	id.resp_p	version	client_initial_dcid	client_scid	server_scid	server_name	client_protocol	history
+#types	time	string	addr	port	addr	port	string	string	string	string	string	string	string
+1769937994.037159	C24iU23ejFi6qmwl0j	2405:9800:bc90:a5a0:1cc0:f937:e025:1a5b	58033	2404:6800:4003:c1a::5e	443	1	b98df3a1bab9330b	(empty)	f98df3a1bab9330b	beacons.gcp.gvt2.com	h3	IISiiiisIhhhHH
+1769937992.482829	CyxpEHf59lnXUKK11	2405:9800:bc90:a5a0:1cc0:f937:e025:1a5b	65014	2404:6800:4003:c0f::5f	443	1	28a49d77d8eae64d	(empty)	e8a49d77d8eae64d	safebrowsing.googleapis.com	h3	IIISZZiiiiishH
+1769937991.230400	C0UCy1EDEbVlojlG	2405:9800:bc90:a5a0:1cc0:f937:e025:1a5b	61514	2404:6800:4016:80a::2003	443	1	95e5edd11d598af7	(empty)	f5e5edd11d598af7	ssl.gstatic.com	h3	IISZZiiIiishH
+1769937986.737274	C89Lgi4tEFcmLwsFN7	2405:9800:bc90:a5a0:1cc0:f937:e025:1a5b	60516	2404:6800:4016:808::200a	443	1	183c0d488d839f3b	(empty)	f83c0d488d839f3b	signaler-pa.clients6.google.com	h3	IISZZiiIiishH
+1769937955.759501	CKL9Ma38PqttGAUFZe	2405:9800:bc90:a5a0:1cc0:f937:e025:1a5b	50541	2404:6800:4016:80f::200a	443	1	327278d3dc054596	(empty)	f27278d3dc054596	developers.googleapis.com	h3	IIISZZiiiiIiishH
+1769937990.743286	CAoGJ81BlyahCjSAU2	2405:9800:bc90:a5a0:1cc0:f937:e025:1a5b	54773	2404:6800:4003:c0f::5f	443	1	324e3d65e02cfc7a	(empty)	f24e3d65e02cfc7a	safebrowsing.googleapis.com	h3	IIISZZiiiiishH
+#close	2026-02-02-15-33-30

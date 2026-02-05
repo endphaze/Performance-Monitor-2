@@ -1,0 +1,11 @@
+#separator \x09
+#set_separator	,
+#empty_field	(empty)
+#unset_field	-
+#path	ntp
+#open	2026-02-02-15-33-30
+#fields	ts	uid	id.orig_h	id.orig_p	id.resp_h	id.resp_p	version	mode	stratum	poll	precision	root_delay	root_disp	ref_id	ref_time	org_time	rec_time	xmt_time	num_exts
+#types	time	string	addr	port	addr	port	count	count	count	interval	interval	interval	interval	string	time	time	time	time	count
+1769937968.697657	CID7yE1WOV9SlGPyhi	192.168.1.107	62457	162.159.200.1	123	4	3	0	1.000000	1.000000	0.000000	0.000000	\x00\x00\x00\x00	0.000000	0.000000	0.000000	1769937968.697289	0
+1769937968.701178	CID7yE1WOV9SlGPyhi	192.168.1.107	62457	162.159.200.1	123	4	4	3	1.000000	0.000000	0.072968	0.001572	10.59.8.4	1769937940.894003	1769937968.697289	1769937969.986523	1769937969.986675	0
+#close	2026-02-02-15-33-30
