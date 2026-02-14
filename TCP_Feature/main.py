@@ -1,71 +1,103 @@
-import glob
-import os
-import statistics
-import subprocess
-import pyshark
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+from tools.utility import save_data_to_csv
+import tools.graph_generator as graph_generator
+from tools.tcp_analysis_pyshark import tcp_analyze, get_https_app_response_time2
 
 
-def process_with_splitcap(input_pcap):
-    # 1. เช็คขนาดไฟล์ (หน่วย MB)
-    file_size_mb = os.path.getsize(input_pcap) / (1024 * 1024)
-    print(f"กำลังตรวจสอบไฟล์: {input_pcap} ({file_size_mb:.2f} MB)")
+pcap_file = "pcap/TCP Test 5.pcap"
+target_ip = "216.198.79.67"
+output_graph = f"result/graph/graph_resp-t_{target_ip}.png"
+output_pdf = f"result/report_tcp_{target_ip}.pdf"
+title = f"TCP Analysis Report for {target_ip}"
 
-    output_dir = f"{input_pcap}_split"
+output = get_https_app_response_time2(pcap_file, target_ip, [], limit=1000)
+for field in output:
+    print(field)
 
-    # ล้างโฟลเดอร์เก่าก่อนเริ่ม (เพื่อไม่ให้ไฟล์ปนกัน)
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+min_req, max_req, avg_req = output.request_size.model_dump().values()
+min_res, max_res, avg_res = output.response_size.model_dump().values()
+min_rt, max_rt, avg_rt = output.response_time.model_dump().values()
+top_ports = output.top_ports
+top_endpoints = output.top_endpoints
+exec_time = output.exec_time
 
-    # 2. เงื่อนไขการตัดไฟล์ (เช่น ถ้า > 100MB ให้แยกตาม Session)
-    if file_size_mb > 100:
-        print("ไฟล์มีขนาดใหญ่ กำลังแยกไฟล์ตาม TCP Session...")
-        try:
-            # คำสั่ง SplitCap:
-            # -r: ไฟล์ต้นทาง, -s session: แยกตาม flow, -o: โฟลเดอร์ปลายทาง
-            subprocess.run(
-                ["SplitCap.exe", "-r", input_pcap, "-s", "session", "-o", output_dir],
-                check=True,
-            )
+graph_generator.gen_graph(output.graph_response_time, output_graph)
 
-            # ดึงรายชื่อไฟล์ย่อยที่ได้ (.pcap)
-            files_to_process = glob.glob(os.path.join(output_dir, "*.pcap"))
-            print(f"แยกเสร็จสิ้น ได้ไฟล์ย่อยทั้งหมด {len(files_to_process)} ไฟล์")
+# สร้างรายงาน pdf
+doc = SimpleDocTemplate(output_pdf, pagesize=letter)
+styles = getSampleStyleSheet()
+elements = []
 
-        except subprocess.CalledProcessError as e:
-            print(f"SplitCap ทำงานผิดพลาด: {e}")
-            return
-    else:
-        files_to_process = [input_pcap]
+elements.append(Paragraph(title, styles['Title']))
+elements.append(Spacer(1, 12))
+img = Image(output_graph, width=450, height=225)
+elements.append(img)
+elements.append(Spacer(1, 12))
 
-    # 3. วนลูปใช้ pyshark อ่านไฟล์ย่อย
-    for f in files_to_process:
-        print(f"--- เริ่มวิเคราะห์: {os.path.basename(f)} ---")
-        # ใช้ FileCapture พร้อมกั้น filter ให้ดึงแค่ข้อมูลที่ต้องการ
-        cap = pyshark.FileCapture(
-            f, display_filter="tcp.port == 8080 and tcp.analysis.ack_rtt"
-        )
+# ตารางสถิติ
 
-        try:
-            list_ack_rtts = []
-            for pkt in cap:
-                # ตัวอย่าง: ดึงค่า IP และ Hostname (ถ้ามี)
-                src_ip = pkt.ip.src
-                dst_ip = pkt.ip.dst
-                src_port = pkt.tcp.srcport
-                dst_port = pkt.tcp.dstport
-                ack_rtt = pkt.tcp.analysis_ack_rtt
-                # print(
-                #     f"Packet ใน Flow: {src_ip} {src_port} -> {dst_ip} {dst_port} ack_rtt : {ack_rtt.showname}"
-                # )
-                # หยุดแค่ 1 packet ต่อไฟล์เพื่อทดสอบ (ถ้าต้องการ)
-                list_ack_rtts.append(float(ack_rtt))
+# Table 1: Response Time Stats
+data_rt = [
+['Metric', 'Min', 'Max', 'Average'],
+['Response Time (s)', f"{min_rt:.6f}",
+ f"{max_rt:.6f}",
+ f"{avg_rt:.6f}"]
+]
+t1 = Table(data_rt)
 
-            print(statistics.mean(list_ack_rtts) * 1000, "ms")
-        except Exception as e:
-            print(f"Error ขณะอ่านไฟล์ {f}: {e}")
-        finally:
-            cap.close()  # คืน memory
+elements.append(Paragraph("Response Time Statistics", styles['Heading2']))
+elements.append(t1)
+elements.append(Spacer(1, 12))
+
+# Table 2: Request/Response Size Stats
+data_size = [
+['Type', 'Min Size (bytes)', 'Max Size (bytes)', 'Avg Size (bytes)'],
+['Request', f"{min_req}", f"{max_req}", f"{avg_req:.2f}"],
+['Response', f"{min_res}", f"{max_res}", f"{avg_res:.2f}"]
+]
+t2 = Table(data_size)
+
+elements.append(Paragraph("Request / Response Size Statistics", styles['Heading2']))
+elements.append(t2)
+elements.append(Spacer(1, 12))
+
+data_exec = [
+    ['Metric', 'Time (seconds)'],
+    ['Program Execution Time', f"{exec_time:.4f}"]
+]
+t4 = Table(data_exec)
+
+elements.append(Paragraph("Program Performance", styles['Heading2']))
+elements.append(t4)
+doc.build(elements)
+print("PDF generation complete.")
+
+print()
+print(f"Analysis Results for {target_ip}")
+print("="*50)
+
+print("\n[Response Time Statistics (s)]")
+print(f"  Min: {min_rt:.6f}")
+print(f"  Max: {max_rt:.6f}")
+print(f"  Avg: {avg_rt:.6f}")
+
+print("\nTop Ports")
+for port in top_ports:
+    print(f"{port}")
+    
+print("\nTop Endpoints")
+for endpoint in top_endpoints:
+    print(f"{endpoint}")
+    
+    
+print("\n[Request/Response Size Statistics (bytes)]")
+print(f"  Request  - Min: {min_req:<10} Max: {max_req:<10} Avg: {avg_req:.2f}")
+print(f"  Response - Min: {min_res:<10} Max: {max_res:<10} Avg: {avg_res:.2f}")
 
 
-# เรียกใช้งาน
-process_with_splitcap("test_pcap/TCP Test 3.pcap")
+print("excuted time = ", round(exec_time, 6), "sec")

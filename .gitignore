@@ -1,3 +1,5 @@
 .venv
 venv_ubuntu
+zeek*
+result
 *.splited
