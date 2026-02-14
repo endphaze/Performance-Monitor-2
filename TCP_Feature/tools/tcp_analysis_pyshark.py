@@ -105,7 +105,7 @@ def tcp_analyze(pcap_file, target_ip, ports=None) -> utility.TCPOutputModel:
     )
     
     
-def get_https_app_response_time(pcap_file, target_ip, ports=[], limit=None) -> utility.TCPOutputModel:
+def tcp_analyze_http1(pcap_file, target_ip, ports=[], limit=None) -> utility.TCPOutputModel:
     
     start_time = time.time()
     resp_times = []
@@ -113,9 +113,9 @@ def get_https_app_response_time(pcap_file, target_ip, ports=[], limit=None) -> u
     # display_filter = f"ip.addr == {target_ip} and tcp.port in {{{port_filter}}}"
     if ports:
         port_filter = " or ".join([f"tcp.port == {p}" for p in ports])
-        display_filter = f"ip.addr == {target_ip} and ({port_filter})"
+        display_filter = f"ip.addr == {target_ip} and ({port_filter}) and tcp.payload > 0"
     else:
-        display_filter = f"ip.addr == {target_ip}"
+        display_filter = f"ip.addr == {target_ip} and tcp.payload > 0"
     
     relevant_packets = 0
     total_packets = 0
@@ -137,7 +137,7 @@ def get_https_app_response_time(pcap_file, target_ip, ports=[], limit=None) -> u
     # { stream_id: last_request_time }
     pending_requests = defaultdict(dict)
     
-    print(f"{'Stream':<8} | {'App Response Time (ms)':<25} | {'Info'}")
+    print(f"{'Stream':<8} | {"Req Index":<8} | {"Resp Index":<8} | {'Response Time (ms)':<12}")
     print("-" * 50)
     
     try:
@@ -162,7 +162,7 @@ def get_https_app_response_time(pcap_file, target_ip, ports=[], limit=None) -> u
                     is_from_client = (ip_layer.dst == target_ip)
                     
                 # 1. ถ้ามี Data จาก Client -> Server (นี่คือ Request)
-                if is_from_client and payload_len > 0:
+                if is_from_client:
                     pending_requests[stream_id][tcp_layer.nxtseq] = {"time": curr_time,
                         "idx": pkt.number,
                         "seq": tcp_layer.seq}
@@ -171,7 +171,7 @@ def get_https_app_response_time(pcap_file, target_ip, ports=[], limit=None) -> u
                 
                 
                 # 2. ถ้ามี Data จาก Server -> Client (นี่คือ Response)
-                elif not is_from_client and payload_len > 0:
+                elif not is_from_client:
                     if stream_id in pending_requests and tcp_layer.ack in pending_requests[stream_id]:
                         # คำนวณเวลาที่ห่างกัน
                         relevant_packets += 1
@@ -181,9 +181,9 @@ def get_https_app_response_time(pcap_file, target_ip, ports=[], limit=None) -> u
                         
                         # กรองเฉพาะค่าที่เป็นบวก (ป้องกันกรณี Out-of-order)
                         if app_res_time > 0:
-                            print("\nresponse:stream_id", stream_id, f"request idx {req["idx"]} responsed by idx {pkt.number}", "response time =", round(app_res_time,2))
-                            print(f"req_seq = {req["seq"]}", f"resp_seq = {pkt.tcp.seq}, resp_ack {pkt.tcp.ack}")
-                            # print(f"{stream_id:<8} | {app_res_time:>20.2f} ms | Actual Data Res")
+                            #print("\nresponse:stream_id", stream_id, f"request idx {req["idx"]} responsed by idx {pkt.number}", "response time =", round(app_res_time,2))
+                            #print(f"req_seq = {req["seq"]}", f"resp_seq = {pkt.tcp.seq}, resp_ack {pkt.tcp.ack}")
+                            print(f"{stream_id:<8} | {req["idx"]:<9} | {pkt.number:<10} | {app_res_time:>10.3f} ms")
                             data_points.append((curr_time, app_res_time))
                 
 
@@ -191,14 +191,18 @@ def get_https_app_response_time(pcap_file, target_ip, ports=[], limit=None) -> u
                 
             except AttributeError:
                 continue
-        print("\ntcp stream connection", len(pending_requests))
+            
+        print("matched packet", relevant_packets)
+        print(utility.get_MinMaxAvg(resp_times))
+        
+        print("\ntcp stream connection counts", len(pending_requests))
         cant_find_response = 0
         for reqs in pending_requests.values():
             cant_find_response += len(reqs)
             
         print(f"{cant_find_response} requests cant find response.")
-        print(utility.get_MinMaxAvg(resp_times))
-        print("matched packet", relevant_packets)
+        
+        
     finally:
         cap.close()
         exec_time = time.time() - start_time
@@ -487,6 +491,99 @@ def get_https_app_response_time3(pcap_file, target_ip, ports=[443], limit=None) 
     ) 
     
     
+def tcp_analyze_http1_optimized(pcap_file, target_ip, ports=[], limit=None) -> utility.TCPOutputModel:
+    start_time = time.time()
     
+    # 1. ปรับ Display Filter ให้ดักเฉพาะแพ็กเก็ตที่มี Data (tcp.len > 0)
+    # วิธีนี้จะลดจำนวนแพ็กเก็ตที่เข้า Loop ไปได้มากกว่า 50% (ข้ามพวก ACK เปล่าๆ)
+    port_filter = ""
+    if ports:
+        port_list = " ".join(map(str, ports))
+        port_filter = f" and tcp.port in {{{port_list}}}"
+    
+    # เพิ่ม 'tcp.len > 0' ใน filter เพื่อความเร็วสูงสุด
+    display_filter = f"ip.addr == {target_ip} and tcp.len > 0{port_filter}"
+    
+    # 2. ปรับ Parameter ของ TShark เพื่อความเร็ว
+    # -n: ปิด Name Resolution
+    # -o tcp.desegment_tcp_streams:FALSE: ปิดการรวมข้อมูลที่แยกส่วนกันเพื่อลดการใช้ RAM
+    custom_params = ['-n', '-o', 'tcp.desegment_tcp_streams:FALSE']
+
+    cap = pyshark.FileCapture(
+        pcap_file,
+        display_filter=display_filter,
+        keep_packets=False,
+        use_json=True,
+        custom_parameters=custom_params
+    )
+
+    relevant_packets = 0
+    total_packets = 0
+    resp_times = []
+    data_points = []
+    
+    # ใช้ dict ปกติแทน defaultdict เพื่อความเร็วที่เพิ่มขึ้นเล็กน้อยใน loop ใหญ่
+    pending_requests = {} 
+
+    print(f"Analyzing {pcap_file} (Optimized)...")
+
+    try:
+        for pkt in cap:
+            total_packets += 1
+            if limit and total_packets > limit:
+                break
+                
+            try:
+                tcp = pkt.tcp
+                ip = pkt.ip
+                stream_id = tcp.stream
+                curr_time = float(pkt.sniff_timestamp)
+                
+                # แยกฝั่ง Client/Server (ใช้วิธีเช็ค IP ปลายทาง)
+                is_from_client = (ip.dst == target_ip)
+                
+                # 1. Request (Client -> Server)
+                if is_from_client:
+                    if stream_id not in pending_requests:
+                        pending_requests[stream_id] = {}
+                    
+                    # จดบันทึกเวลาที่ nxtseq นี้ควรจะได้รับการ ACK กลับมา
+                    pending_requests[stream_id][tcp.nxtseq] = curr_time
+                
+                # 2. Response (Server -> Client)
+                else:
+                    # เช็คว่า ACK นี้ตรงกับ Request ตัวไหนใน Stream นี้
+                    if stream_id in pending_requests:
+                        req_time = pending_requests[stream_id].pop(tcp.ack, None)
+                        
+                        if req_time:
+                            app_res_time = (curr_time - req_time) * 1000
+                            
+                            if app_res_time > 0:
+                                relevant_packets += 1
+                                resp_times.append(round(app_res_time, 2))
+                                data_points.append((curr_time, app_res_time))
+
+            except AttributeError:
+                continue
+
+    finally:
+        cap.close()
+
+    exec_time = time.time() - start_time
+    
+    # คำนวณสถิติส่งกลับ (ใช้ utility ที่คุณมี)
+    return utility.TCPOutputModel(
+        target_ip=target_ip,
+        exec_time=exec_time,
+        total_packets_count=total_packets,
+        relevant_packets_count=relevant_packets,
+        top_endpoints=[], # เพิ่ม Counter เองตามต้องการ
+        top_ports=[],
+        response_size=utility.get_MinMaxAvg([]),
+        request_size=utility.get_MinMaxAvg([]),
+        response_time=utility.get_MinMaxAvg(resp_times),
+        graph_response_time=data_points
+    )
     
     

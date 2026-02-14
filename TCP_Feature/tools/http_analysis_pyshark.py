@@ -1,7 +1,8 @@
 import pyshark
 import time
-import tools.utility as utility
 from collections import Counter
+
+import tools.utility as utility
 
 def http_analyze(pcap_file, target_ip, ports=[], limit=None) -> utility.TCPOutputModel:
     start_time = time.time()
@@ -31,7 +32,7 @@ def http_analyze(pcap_file, target_ip, ports=[], limit=None) -> utility.TCPOutpu
         use_json=True
     )
 
-    print(f"{'No.':<8} | {'Stream':<8} | {'HTTP Time (ms)':<20}")
+    print(f"{'Request No.':<8} | {'Response No.':<8} | {'Stream':<8} | {'HTTP Time (ms)':<20}")
     print("-" * 50)
 
     try:
