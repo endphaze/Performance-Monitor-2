@@ -1,7 +1,10 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
 def gen_graph(data, graph_name):
+    
+    
     if not data:
         print("No data to plot")
         return
@@ -55,3 +58,40 @@ def gen_graph(data, graph_name):
     plt.savefig(f"{graph_name}", dpi=200)
     plt.close()
     print(f"Clean graph saved: {graph_name}")
+    
+    
+    
+def gen_pandas_graph(df : pd, graph_name, metrics=['response_time', 'conn_count', 'pending_requests']):
+    num_plots = len(metrics)
+    fig, axes = plt.subplots(num_plots, 1, figsize=(12, 3 * num_plots), sharex=True)
+    
+    if num_plots == 1: axes = [axes]
+
+    for i, col in enumerate(metrics):
+        ax = axes[i]
+        if col in df.columns:
+            # พล็อตข้อมูลดิบแบบจางๆ
+            ax.plot(df.index, df[col], alpha=0.3, color='gray')
+            
+            # ถ้าเป็นค่าต่อเนื่อง ให้ทำ Smoothing ให้ด้วย
+            if 'time' in col:
+                smooth_data = df[col].rolling(window=5, min_periods=1).mean()
+                ax.plot(df.index, smooth_data, color='#2c7bb6', linewidth=2, label='Smoothed')
+            else:
+                # ถ้าเป็นพวก Count ให้ใช้ Step plot
+                ax.step(df.index, df[col], where='post', color='#d7191c', linewidth=1.5)
+            
+            ax.set_ylabel(col.replace('_', ' ').title(), fontweight='bold')
+            ax.grid(True, linestyle=':', alpha=0.6)
+        
+    plt.xlabel("Time (Timeline)")
+    plt.tight_layout()
+    plt.savefig(graph_name)
+    
+    
+    
+    
+    
+    
+    
+    

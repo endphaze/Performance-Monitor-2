@@ -1,0 +1,69 @@
+# แก้จาก lab ให้มีการ summary เป็นไฟล์ json และเก็บ log การทำงาน
+
+# CPU 0.5
+
+# Run 1-5
+
+k6 run -e VUS=100 -e TARGET_URL=http://192.168.1.100:8080 --out csv=apache_0.5_100.csv --summary-export=apache_0.5_100.json script.js > log_apache_0.5_100.txt
+k6 run -e VUS=500 -e TARGET_URL=http://localhost:8080 --out csv=apache_0.5_500.csv --summary-export=apache_0.5_500.json script.js > log_apache_0.5_500.txt
+k6 run -e VUS=1000 -e TARGET_URL=http://localhost:8080 --out csv=apache_0.5_1000.csv --summary-export=apache_0.5_1000.json script.js > log_apache_0.5_1000.txt
+k6 run -e VUS=2500 -e TARGET_URL=http://localhost:8080 --out csv=apache_0.5_2500.csv --summary-export=apache_0.5_2500.json script.js > log_apache_0.5_2500.txt
+k6 run -e VUS=5000 -e TARGET_URL=http://localhost:8080 --out csv=apache_0.5_5000.csv --summary-export=apache_0.5_5000.json script.js > log_apache_0.5_5000.txt
+
+## Test
+# Power Shell
+$env:K6_WEB_DASHBOARD="true" ; $env:K6_WEB_DASHBOARD_EXPORT="test-report.html" ; k6 run -e VUS=100 -e TARGET_URL=http://localhost:8080 --out csv=apache_0.5_100.csv --summary-export=apache_0.5_100.json script.js
+
+# CMD
+set "K6_WEB_DASHBOARD=true" && set "K6_WEB_DASHBOARD_EXPORT=test-report.html" && k6 run -e VUS=100 -e TARGET_URL=http://localhost:8080 --out csv=apache_0.5_100.csv --summary-export=apache_0.5_100.json script.js
+
+k6 run -e VUS=100 -e TARGET_URL=http://localhost:8080 --out csv=apache_0.5_100.csv --summary-export=apache_0.5_100.json script.js
+k6 run -e VUS=500 -e TARGET_URL=http://localhost:8080 --out csv=apache_0.5_500.csv --summary-export=apache_0.5_500.json script.js
+k6 run -e VUS=1000 -e TARGET_URL=http://localhost:8080 --out csv=apache_0.5_1000.csv --summary-export=apache_0.5_1000.json script.js
+k6 run -e VUS=2500 -e TARGET_URL=http://localhost:8080 --out csv=apache_0.5_2500.csv --summary-export=apache_0.5_2500.json script.js
+k6 run -e VUS=5000 -e TARGET_URL=http://localhost:8080 --out csv=apache_0.5_5000.csv --summary-export=apache_0.5_5000.json script.js
+
+# Run 6-10
+
+k6 run -e VUS=100 -e TARGET_URL=http://localhost:8081 --out csv=nginx_0.5_100.csv --summary-export=nginx_0.5_100.json script.js > log_nginx_0.5_100.txt
+k6 run -e VUS=500 -e TARGET_URL=http://localhost:8081 --out csv=nginx_0.5_500.csv --summary-export=nginx_0.5_500.json script.js > log_nginx_0.5_500.txt
+k6 run -e VUS=1000 -e TARGET_URL=http://localhost:8081 --out csv=nginx_0.5_1000.csv --summary-export=nginx_0.5_1000.json script.js > log_nginx_0.5_1000.txt
+k6 run -e VUS=2500 -e TARGET_URL=http://localhost:8081 --out csv=nginx_0.5_2500.csv --summary-export=nginx_0.5_2500.json script.js > log_nginx_0.5_2500.txt
+k6 run -e VUS=5000 -e TARGET_URL=http://localhost:8081 --out csv=nginx_0.5_5000.csv --summary-export=nginx_0.5_5000.json script.js > log_nginx_0.5_5000.txt
+
+# Run 11-15
+
+k6 run -e VUS=100 -e TARGET_URL=http://localhost:8082 --out csv=caddy_0.5_100.csv --summary-export=caddy_0.5_100.json script.js > log_caddy_0.5_100.txt
+k6 run -e VUS=500 -e TARGET_URL=http://localhost:8082 --out csv=caddy_0.5_500.csv --summary-export=caddy_0.5_500.json script.js > log_caddy_0.5_500.txt
+k6 run -e VUS=1000 -e TARGET_URL=http://localhost:8082 --out csv=caddy_0.5_1000.csv --summary-export=caddy_0.5_1000.json script.js > log_caddy_0.5_1000.txt
+k6 run -e VUS=2500 -e TARGET_URL=http://localhost:8082 --out csv=caddy_0.5_2500.csv --summary-export=caddy_0.5_2500.json script.js > log_caddy_0.5_2500.txt
+k6 run -e VUS=5000 -e TARGET_URL=http://localhost:8082 --out csv=caddy_0.5_5000.csv --summary-export=caddy_0.5_5000.json script.js > log_caddy_0.5_5000.txt
+
+
+
+# CPU 1.0
+
+# Run 16-20
+
+k6 run -e VUS=100 -e TARGET_URL=http://localhost:8080 --out csv=apache_1.0_100.csv --summary-export=apache_1.0_100.json script.js > log_apache_1.0_100.txt
+k6 run -e VUS=500 -e TARGET_URL=http://localhost:8080 --out csv=apache_1.0_500.csv --summary-export=apache_1.0_500.json script.js > log_apache_1.0_500.txt
+k6 run -e VUS=1000 -e TARGET_URL=http://localhost:8080 --out csv=apache_1.0_1000.csv --summary-export=apache_1.0_1000.json script.js > log_apache_1.0_1000.txt
+k6 run -e VUS=2500 -e TARGET_URL=http://localhost:8080 --out csv=apache_1.0_2500.csv --summary-export=apache_1.0_2500.json script.js > log_apache_1.0_2500.txt
+k6 run -e VUS=5000 -e TARGET_URL=http://localhost:8080 --out csv=apache_1.0_5000.csv --summary-export=apache_1.0_5000.json script.js > log_apache_1.0_5000.txt
+
+# Run 21-25
+
+k6 run -e VUS=100 -e TARGET_URL=http://localhost:8081 --out csv=nginx_1.0_100.csv --summary-export=nginx_1.0_100.json script.js >  log_nginx_1.0_100.txt
+k6 run -e VUS=500 -e TARGET_URL=http://localhost:8081 --out csv=nginx_1.0_500.csv --summary-export=nginx_1.0_500.json script.js > log_nginx_1.0_500.txt
+k6 run -e VUS=1000 -e TARGET_URL=http://localhost:8081 --out csv=nginx_1.0_1000.csv --summary-export=nginx_1.0_1000.json script.js > log_nginx_1.0_1000.txt
+k6 run -e VUS=2500 -e TARGET_URL=http://localhost:8081 --out csv=nginx_1.0_2500.csv --summary-export=nginx_1.0_2500.json script.js > log_nginx_1.0_2500.txt
+k6 run -e VUS=5000 -e TARGET_URL=http://localhost:8081 --out csv=nginx_1.0_5000.csv --summary-export=nginx_1.0_5000.json script.js > log_nginx_1.0_5000.txt
+
+# Run 26-30
+
+k6 run -e VUS=100 -e TARGET_URL=http://localhost:8082 --out csv=caddy_1.0_100.csv --summary-export=caddy_1.0_100.json script.js > log_caddy_1.0_100.txt
+k6 run -e VUS=500 -e TARGET_URL=http://localhost:8082 --out csv=caddy_1.0_500.csv --summary-export=caddy_1.0_500.json script.js > log_caddy_1.0_500.txt
+k6 run -e VUS=1000 -e TARGET_URL=http://localhost:8082 --out csv=caddy_1.0_1000.csv --summary-export=caddy_1.0_1000.json script.js > log_caddy_1.0_1000.txt
+k6 run -e VUS=2500 -e TARGET_URL=http://localhost:8082 --out csv=caddy_1.0_2500.csv --summary-export=caddy_1.0_2500.json script.js > log_caddy_1.0_2500.txt
+k6 run -e VUS=5000 -e TARGET_URL=http://localhost:8082 --out csv=caddy_1.0_5000.csv --summary-export=caddy_1.0_5000.json script.js > log_caddy_1.0_5000.txt
+

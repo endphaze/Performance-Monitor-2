@@ -61,7 +61,8 @@ def http_analyze(pcap_file, target_ip, ports=[], limit=None) -> utility.TCPOutpu
 
                     print(f"{pkt.number:<8} | {stream_id:<8} | {res_time_ms:.2f} ms")
 
-            except AttributeError:
+            except AttributeError as e:
+                print(e)
                 continue
 
     finally:
@@ -78,5 +79,5 @@ def http_analyze(pcap_file, target_ip, ports=[], limit=None) -> utility.TCPOutpu
             response_size=utility.get_MinMaxAvg(response_sizes),
             request_size=utility.get_MinMaxAvg(request_sizes), # ส่วนนี้อาจว่างถ้ากรองแค่ http.time
             response_time=utility.get_MinMaxAvg(response_times),
-            graph_response_time=data_points
+            csv_file=""
         )

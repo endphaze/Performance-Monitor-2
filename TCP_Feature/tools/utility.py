@@ -1,11 +1,12 @@
 import glob, os
 import re, subprocess
 import time, json
-import statistics
+import statistics, csv
+
+from dataclasses import dataclass
 from pathlib import Path
 from pydantic import BaseModel, IPvAnyAddress, Field, computed_field
-import csv
-
+from datetime import datetime
 
 def _filter_pcap_files(abs_file_list, protocol="any", src_ip="any", src_port="any", dst_ip="any", dst_port="any"):
     filtered_abs_paths = []
@@ -165,7 +166,18 @@ class TCPOutputModel(BaseModel):
     exec_time : float
     top_ports : list[tuple]
     top_endpoints : list[tuple]
-    graph_response_time: list[tuple[float,float]]
+    csv_file: str
+    
+@dataclass(slots=True)
+class PacketMetrics:
+    time: datetime
+    response_time: float
+    conn_count: int
+    pending_req: int
+    stream_id: str
+    role: str
+
+
 
 def get_MinMaxAvg(list_data) -> MinMaxAvg:
     """Input [] for MinMaxAvg"""

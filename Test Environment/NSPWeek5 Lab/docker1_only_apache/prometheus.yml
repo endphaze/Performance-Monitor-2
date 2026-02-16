@@ -1,0 +1,6 @@
+global:
+  scrape_interval: 5s # เก็บข้อข้ มูลทุกทุ ๆ 5 วินวิ าที (เพื่อพื่ ให้เห้ห็นห็ กราฟละเอียดขึ้นขึ้ )
+scrape_configs:
+  - job_name: "cadvisor"
+    static_configs:
+      - targets: ["cadvisor:8080"]

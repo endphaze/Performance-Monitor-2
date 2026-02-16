@@ -1,7 +1,11 @@
 import pyshark
 import time
+import os
 import tools.utility as utility
-from collections import Counter, deque, defaultdict
+import pandas as pd
+from dataclasses import asdict
+from collections import Counter, deque, defaultdict, namedtuple
+from datetime import datetime
 
 def tcp_analyze(pcap_file, target_ip, ports=None) -> utility.TCPOutputModel:
     
@@ -104,9 +108,26 @@ def tcp_analyze(pcap_file, target_ip, ports=None) -> utility.TCPOutputModel:
         graph_response_time=data_points
     )
     
-    
+
+def get_all_pending_reqs(pending_request: defaultdict):
+    all = 0
+    for v in pending_request.values():
+        all += len(v)
+    return all
+
 def tcp_analyze_http1(pcap_file, target_ip, ports=[], limit=None) -> utility.TCPOutputModel:
     
+    
+
+    port_str = "_".join(map(str, ports)) if ports else "all"
+    output_file = f"result/{target_ip}_{port_str}_analysis.csv"
+    
+    # ลบไฟล์เก่าทิ้งก่อนเริ่มรันใหม่ (ถ้าต้องการ)
+    if os.path.exists(output_file):
+        os.remove(output_file)
+    
+    chunk = []
+    chunk_size = 10000
     start_time = time.time()
     resp_times = []
     # port_filter = " ".join(map(str, ports))
@@ -117,6 +138,9 @@ def tcp_analyze_http1(pcap_file, target_ip, ports=[], limit=None) -> utility.TCP
     else:
         display_filter = f"ip.addr == {target_ip} and tcp.payload > 0"
     
+    
+    
+    # เก็บค่าสถิติต่างๆ
     relevant_packets = 0
     total_packets = 0
     endpoints_count = Counter()
@@ -124,7 +148,10 @@ def tcp_analyze_http1(pcap_file, target_ip, ports=[], limit=None) -> utility.TCP
     response_sizes = []
     request_sizes = []
     response_times = []
-    data_points = []
+    active_streams = set()
+    
+    
+    graph_data_lst = []
     
     cap = pyshark.FileCapture(
         pcap_file,
@@ -134,7 +161,6 @@ def tcp_analyze_http1(pcap_file, target_ip, ports=[], limit=None) -> utility.TCP
     )
 
     # เก็บเวลาของ Request ล่าสุดแยกตาม Stream ID
-    # { stream_id: last_request_time }
     pending_requests = defaultdict(dict)
     
     print(f"{'Stream':<8} | {"Req Index":<8} | {"Resp Index":<8} | {'Response Time (ms)':<12}")
@@ -145,6 +171,7 @@ def tcp_analyze_http1(pcap_file, target_ip, ports=[], limit=None) -> utility.TCP
             if limit and total_packets >= limit:
                 break
             total_packets += 1
+            
             try:
                 tcp_layer = pkt.tcp
                 ip_layer = pkt.ip
@@ -152,8 +179,44 @@ def tcp_analyze_http1(pcap_file, target_ip, ports=[], limit=None) -> utility.TCP
                 curr_time = float(pkt.sniff_timestamp)
                 payload_len = int(tcp_layer.len)
                 
-                # แยกฝั่ง Client และ Server
+                # --- 1. ตรวจสอบการเริ่มต้น/ทำงาน ---
+                # ถ้ามีข้อมูลวิ่งอยู่ ให้ถือว่า stream นี้ยัง active
+                active_streams.add(stream_id)
+
+                # --- 2. ตรวจสอบการจบการเชื่อมต่อ (FIN หรือ RST) ---
+                # เช็ค Flag เพื่อดูว่าการเชื่อมต่อสิ้นสุดลงหรือไม่
+                flags = int(tcp_layer.flags, 16)
+                FIN = 0x01
+                RST = 0x04
                 
+                if flags & FIN or flags & RST:
+                    # ถ้าเจอแพ็กเก็ตปิดการเชื่อมต่อ ให้เอาออกจาก set
+                    if stream_id in active_streams:
+                        active_streams.remove(stream_id)
+                
+                
+                metrics = utility.PacketMetrics(
+                    time=curr_time,
+                    response_time=0,
+                    conn_count=len(active_streams),
+                    pending_req=get_all_pending_reqs(pending_requests),
+                    stream_id=stream_id,
+                    role=""
+                )
+                
+                
+                
+                
+                if len(chunk) >= chunk_size:
+                    df_chunk = pd.DataFrame(chunk)
+                    # mode='a' คือการ append, header เขียนแค่ครั้งแรกที่สร้างไฟล์
+                    df_chunk.to_csv(output_file, mode='a', index=False, 
+                                header=not os.path.exists(output_file))
+                    chunk = [] # เคลียร์แรม
+                    print(f"Saved chunk: {total_packets} packets processed...")
+                    
+                    
+                # แยกฝั่ง Client และ Server
                 if ip_layer.src == ip_layer.dst:
                     # กรณี Loopback: ใช้ Port เป็นตัวตัดสินหลัก
                     is_from_client = (int(tcp_layer.dstport) in ports)
@@ -161,16 +224,18 @@ def tcp_analyze_http1(pcap_file, target_ip, ports=[], limit=None) -> utility.TCP
                     # กรณีทั่วไป: ใช้ IP ปลายทางเป็นตัวตัดสิน
                     is_from_client = (ip_layer.dst == target_ip)
                     
-                # 1. ถ้ามี Data จาก Client -> Server (นี่คือ Request)
+                # 1. ถ้ามี Data จาก Client -> Server ตัดสินว่านี่คือ Request
                 if is_from_client:
                     pending_requests[stream_id][tcp_layer.nxtseq] = {"time": curr_time,
                         "idx": pkt.number,
                         "seq": tcp_layer.seq}
-                        
+                    ports_count[tcp_layer.dstport] += 1
+                    endpoints_count[ip_layer.src] += 1
+                    metrics.role = "request"
                     #print("request:stream_id", stream_id, payload_len, f"index: {pkt.number}")
                 
                 
-                # 2. ถ้ามี Data จาก Server -> Client (นี่คือ Response)
+                # 2. ถ้ามี Data จาก Server -> Client ตัดสินว่านี่คือ Response
                 elif not is_from_client:
                     if stream_id in pending_requests and tcp_layer.ack in pending_requests[stream_id]:
                         # คำนวณเวลาที่ห่างกัน
@@ -183,12 +248,14 @@ def tcp_analyze_http1(pcap_file, target_ip, ports=[], limit=None) -> utility.TCP
                         if app_res_time > 0:
                             #print("\nresponse:stream_id", stream_id, f"request idx {req["idx"]} responsed by idx {pkt.number}", "response time =", round(app_res_time,2))
                             #print(f"req_seq = {req["seq"]}", f"resp_seq = {pkt.tcp.seq}, resp_ack {pkt.tcp.ack}")
+                            metrics.response_time = round(app_res_time, 3)
+                            metrics.role = "response"
                             print(f"{stream_id:<8} | {req["idx"]:<9} | {pkt.number:<10} | {app_res_time:>10.3f} ms")
-                            data_points.append((curr_time, app_res_time))
+                            
                 
 
                 
-                
+                chunk.append(asdict(metrics))
             except AttributeError:
                 continue
             
@@ -205,6 +272,13 @@ def tcp_analyze_http1(pcap_file, target_ip, ports=[], limit=None) -> utility.TCP
         
     finally:
         cap.close()
+        
+        # บันทึกข้อมูลที่เหลืออยู่ใน chunk สุดท้าย (ถ้ามี)
+        if chunk:
+            pd.DataFrame(chunk).to_csv(output_file, mode='a', index=False, 
+                                     header=not os.path.exists(output_file))
+            
+        
         exec_time = time.time() - start_time
         
         return utility.TCPOutputModel(
@@ -217,7 +291,7 @@ def tcp_analyze_http1(pcap_file, target_ip, ports=[], limit=None) -> utility.TCP
         response_size=utility.get_MinMaxAvg(response_sizes),
         request_size=utility.get_MinMaxAvg(request_sizes),
         response_time=utility.get_MinMaxAvg(response_times),
-        graph_response_time=data_points
+        csv_file=output_file
     )
 
 
@@ -494,13 +568,24 @@ def get_https_app_response_time3(pcap_file, target_ip, ports=[443], limit=None) 
 def tcp_analyze_http1_optimized(pcap_file, target_ip, ports=[], limit=None) -> utility.TCPOutputModel:
     start_time = time.time()
     
+    
+    port_str = "_".join(map(str, ports)) if ports else "all"
+    output_file = f"result/{target_ip}_{port_str}_analysis.csv"
+    
+    # ลบไฟล์เก่าทิ้งก่อนเริ่มรันใหม่ (ถ้าต้องการ)
+    if os.path.exists(output_file):
+        os.remove(output_file)
+    
+    chunk = []
+    chunk_size = 10000
+        
     # 1. ปรับ Display Filter ให้ดักเฉพาะแพ็กเก็ตที่มี Data (tcp.len > 0)
     # วิธีนี้จะลดจำนวนแพ็กเก็ตที่เข้า Loop ไปได้มากกว่า 50% (ข้ามพวก ACK เปล่าๆ)
     port_filter = ""
     if ports:
         port_list = " ".join(map(str, ports))
         port_filter = f" and tcp.port in {{{port_list}}}"
-    
+
     # เพิ่ม 'tcp.len > 0' ใน filter เพื่อความเร็วสูงสุด
     display_filter = f"ip.addr == {target_ip} and tcp.len > 0{port_filter}"
     
@@ -583,7 +668,7 @@ def tcp_analyze_http1_optimized(pcap_file, target_ip, ports=[], limit=None) -> u
         response_size=utility.get_MinMaxAvg([]),
         request_size=utility.get_MinMaxAvg([]),
         response_time=utility.get_MinMaxAvg(resp_times),
-        graph_response_time=data_points
+        csv_file=output_file
     )
     
     
