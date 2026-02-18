@@ -115,12 +115,13 @@ def get_all_pending_reqs(pending_request: defaultdict):
         all += len(v)
     return all
 
-def tcp_analyze_http1(pcap_file, target_ip, ports=[], limit=None) -> utility.TCPOutputModel:
+def tcp_analyze_http1(pcap_file, target_ip, output_folder = "", ports=[], limit=None) -> utility.TCPOutputModel:
     
+    if output_folder == "":
+        output_folder = "result"
     
-
     port_str = "_".join(map(str, ports)) if ports else "all"
-    output_file = f"result/{target_ip}_{port_str}_analysis.csv"
+    output_file = f"{output_folder}/{target_ip}_{port_str}_analysis.csv"
     
     # ลบไฟล์เก่าทิ้งก่อนเริ่มรันใหม่ (ถ้าต้องการ)
     if os.path.exists(output_file):
@@ -132,11 +133,20 @@ def tcp_analyze_http1(pcap_file, target_ip, ports=[], limit=None) -> utility.TCP
     resp_times = []
     # port_filter = " ".join(map(str, ports))
     # display_filter = f"ip.addr == {target_ip} and tcp.port in {{{port_filter}}}"
+    
+    
     if ports:
         port_filter = " or ".join([f"tcp.port == {p}" for p in ports])
-        display_filter = f"ip.addr == {target_ip} and ({port_filter}) and tcp.payload > 0"
+        display_filter = f"ip.addr == {target_ip} and ({port_filter}) and tcp and tcp.payload > 0"
     else:
-        display_filter = f"ip.addr == {target_ip} and tcp.payload > 0"
+        display_filter = f"ip.addr == {target_ip} and tcp.payload > 0 and tcp"
+    
+    cap = pyshark.FileCapture(
+        pcap_file,
+        display_filter="tcp",
+        keep_packets=False,
+        use_json=False
+    )
     
     
     
@@ -167,17 +177,18 @@ def tcp_analyze_http1(pcap_file, target_ip, ports=[], limit=None) -> utility.TCP
     print("-" * 50)
     
     try:
-        for pkt in cap:
-            if limit and total_packets >= limit:
+        for pkt in cap:            
+            if limit and total_packets > limit:
                 break
-            total_packets += 1
-            
             try:
-                tcp_layer = pkt.tcp
+                
                 ip_layer = pkt.ip
+                tcp_layer = pkt.tcp
+                total_packets +=1
                 stream_id = tcp_layer.stream
                 curr_time = float(pkt.sniff_timestamp)
                 payload_len = int(tcp_layer.len)
+                
                 
                 # --- 1. ตรวจสอบการเริ่มต้น/ทำงาน ---
                 # ถ้ามีข้อมูลวิ่งอยู่ ให้ถือว่า stream นี้ยัง active
@@ -209,7 +220,7 @@ def tcp_analyze_http1(pcap_file, target_ip, ports=[], limit=None) -> utility.TCP
                 
                 if len(chunk) >= chunk_size:
                     df_chunk = pd.DataFrame(chunk)
-                    # mode='a' คือการ append, header เขียนแค่ครั้งแรกที่สร้างไฟล์
+                    # append เข้าไปในไฟล์, header เขียนแค่ครั้งแรกที่สร้างไฟล์
                     df_chunk.to_csv(output_file, mode='a', index=False, 
                                 header=not os.path.exists(output_file))
                     chunk = [] # เคลียร์แรม
@@ -256,12 +267,13 @@ def tcp_analyze_http1(pcap_file, target_ip, ports=[], limit=None) -> utility.TCP
 
                 
                 chunk.append(asdict(metrics))
-            except AttributeError:
+            except AttributeError as e:
+                print(e)
                 continue
-            
-        print("matched packet", relevant_packets)
-        print(utility.get_MinMaxAvg(resp_times))
         
+        print("matched pairs", relevant_packets)
+        print(utility.get_MinMaxAvg(resp_times))
+        print("total", total_packets)
         print("\ntcp stream connection counts", len(pending_requests))
         cant_find_response = 0
         for reqs in pending_requests.values():
