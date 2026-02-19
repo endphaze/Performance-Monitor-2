@@ -148,7 +148,7 @@ def tcp_analyze_http1(pcap_file, target_ip, output_folder = "", ports=[], limit=
         use_json=False
     )
     
-    tshark_filterd_time = time.time() - start_time()
+    tshark_filterd_time = time.time() - start_time
     
     # เก็บค่าสถิติต่างๆ
     relevant_packets = 0
