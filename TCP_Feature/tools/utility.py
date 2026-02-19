@@ -173,10 +173,9 @@ class TCPOutputModel(BaseModel):
 class PacketMetrics:
     time: datetime
     response_time: float
-    conn_count: int
     pending_req: int
     stream_id: str
-    role: str
+    type: str
 
 
 

@@ -205,19 +205,17 @@ def tcp_analyze_http1(pcap_file, target_ip, output_folder = "", ports=[], limit=
                     if stream_id in active_streams:
                         active_streams.remove(stream_id)
                 
-                
+                #ทำไมต้องใช้ data class จาก pandas แทนที่จะใช้ BaseModel
                 metrics = utility.PacketMetrics(
                     time=curr_time,
                     response_time=0,
-                    conn_count=len(active_streams),
                     pending_req=get_all_pending_reqs(pending_requests),
                     stream_id=stream_id,
-                    role=""
+                    type=""
                 )
                 
                 
-                
-                
+
                 if len(chunk) >= chunk_size:
                     df_chunk = pd.DataFrame(chunk)
                     # append เข้าไปในไฟล์, header เขียนแค่ครั้งแรกที่สร้างไฟล์
@@ -264,7 +262,7 @@ def tcp_analyze_http1(pcap_file, target_ip, output_folder = "", ports=[], limit=
                             print(f"{stream_id:<8} | {req["idx"]:<9} | {pkt.number:<10} | {app_res_time:>10.3f} ms")
                             
                 
-
+                
                 
                 chunk.append(asdict(metrics))
             except AttributeError as e:
