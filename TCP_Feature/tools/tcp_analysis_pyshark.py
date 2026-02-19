@@ -148,7 +148,7 @@ def tcp_analyze_http1(pcap_file, target_ip, output_folder = "", ports=[], limit=
         use_json=False
     )
     
-    
+    tshark_filterd_time = time.time() - start_time()
     
     # เก็บค่าสถิติต่างๆ
     relevant_packets = 0
@@ -295,6 +295,7 @@ def tcp_analyze_http1(pcap_file, target_ip, output_folder = "", ports=[], limit=
         
         return utility.TCPOutputModel(
         target_ip=target_ip,
+        tshark_filterd_time=tshark_filterd_time,
         exec_time=exec_time,
         total_packets_count=total_packets, # ในโหมดนี้จะเป็น count ของ filtered packets
         relevant_packets_count=relevant_packets,
@@ -307,380 +308,381 @@ def tcp_analyze_http1(pcap_file, target_ip, output_folder = "", ports=[], limit=
     )
 
 
-def get_https_app_response_time2(pcap_file, target_ip, ports=[], limit=None) -> utility.TCPOutputModel:
-    start_time = time.time()
+# def get_https_app_response_time2(pcap_file, target_ip, ports=[], limit=None) -> utility.TCPOutputModel:
+#     start_time = time.time()
     
-    # สถิติพื้นฐาน
-    total_packets = 0
-    relevant_packets = 0
-    endpoints_count = Counter()
-    ports_count = Counter()
+#     # สถิติพื้นฐาน
+#     total_packets = 0
+#     relevant_packets = 0
+#     endpoints_count = Counter()
+#     ports_count = Counter()
     
-    # ข้อมูลสำหรับ Model
-    request_sizes = []
-    response_sizes = []
-    response_times = []
-    data_points = []
+#     # ข้อมูลสำหรับ Model
+#     request_sizes = []
+#     response_sizes = []
+#     response_times = []
+#     data_points = []
 
-    # โครงสร้างสำหรับ Matching (FIFO)
-    # { stream_id: deque([ {'expect_ack': 123, 'time': 1.1, 'idx': 10}, ... ]) }
-    pending_requests = {}
+#     # โครงสร้างสำหรับ Matching (FIFO)
+#     # { stream_id: deque([ {'expect_ack': 123, 'time': 1.1, 'idx': 10}, ... ]) }
+#     pending_requests = {}
     
-    # สำหรับสะสมขนาด Response (Multi-packet)
-    # { (stream_id, ack): total_payload_size }
-    active_responses_size = {}
+#     # สำหรับสะสมขนาด Response (Multi-packet)
+#     # { (stream_id, ack): total_payload_size }
+#     active_responses_size = {}
 
-    # ปรับปรุง: ถ้า ports ว่าง ให้กรองแค่ target_ip อย่างเดียว
-    if ports:
-        port_filter = " or ".join([f"tcp.port == {p}" for p in ports])
-        display_filter = f"ip.addr == {target_ip} and ({port_filter})"
-    else:
-        display_filter = f"ip.addr == {target_ip}"
+#     # ปรับปรุง: ถ้า ports ว่าง ให้กรองแค่ target_ip อย่างเดียว
+#     if ports:
+#         port_filter = " or ".join([f"tcp.port == {p}" for p in ports])
+#         display_filter = f"ip.addr == {target_ip} and ({port_filter})"
+#     else:
+#         display_filter = f"ip.addr == {target_ip}"
     
-    cap = pyshark.FileCapture(
-        pcap_file,
-        display_filter=display_filter,
-        keep_packets=False,
-        use_json=True
-    )
+#     cap = pyshark.FileCapture(
+#         pcap_file,
+#         display_filter=display_filter,
+#         keep_packets=False,
+#         use_json=True
+#     )
 
-    print(f"{'No.':<8} | {'Stream':<8} | {'Event':<15} | {'Latency':<10}")
-    print("-" * 50)
+#     print(f"{'No.':<8} | {'Stream':<8} | {'Event':<15} | {'Latency':<10}")
+#     print("-" * 50)
 
-    try:
-        for pkt in cap:
-            if limit and total_packets >= limit:
-                break
-            total_packets += 1
+#     try:
+#         for pkt in cap:
+#             if limit and total_packets >= limit:
+#                 break
+#             total_packets += 1
             
-            try:
-                tcp = pkt.tcp
-                ip = pkt.ip
-                stream_id = tcp.stream
-                curr_time = float(pkt.sniff_timestamp)
-                payload_len = int(tcp.len)
+#             try:
+#                 tcp = pkt.tcp
+#                 ip = pkt.ip
+#                 stream_id = tcp.stream
+#                 curr_time = float(pkt.sniff_timestamp)
+#                 payload_len = int(tcp.len)
                 
-                # เก็บข้อมูล Endpoints/Ports
-                endpoints_count[ip.src if ip.dst == target_ip else ip.dst] += 1
-                ports_count[tcp.srcport if ip.dst == target_ip else tcp.dstport] += 1
+#                 # เก็บข้อมูล Endpoints/Ports
+#                 endpoints_count[ip.src if ip.dst == target_ip else ip.dst] += 1
+#                 ports_count[tcp.srcport if ip.dst == target_ip else tcp.dstport] += 1
 
-                # แยกฝั่ง Client (ส่งหา Target) และ Server (Target ส่งออกมา)
-                if ip.src == ip.dst:
-                    # กรณี Loopback: ใช้ Port เป็นตัวตัดสินหลัก
-                    is_from_client = (int(tcp.dstport) in ports)
-                else:
-                    # กรณีทั่วไป: ใช้ IP ปลายทางเป็นตัวตัดสิน
-                    is_from_client = (ip.dst == target_ip)
+#                 # แยกฝั่ง Client (ส่งหา Target) และ Server (Target ส่งออกมา)
+#                 if ip.src == ip.dst:
+#                     # กรณี Loopback: ใช้ Port เป็นตัวตัดสินหลัก
+#                     is_from_client = (int(tcp.dstport) in ports)
+#                 else:
+#                     # กรณีทั่วไป: ใช้ IP ปลายทางเป็นตัวตัดสิน
+#                     is_from_client = (ip.dst == target_ip)
 
-                # 1. จัดการ Request (Client -> Server)
-                if is_from_client and payload_len > 0:
+#                 # 1. จัดการ Request (Client -> Server)
+#                 if is_from_client and payload_len > 0:
                     
-                    request_sizes.append(payload_len)
+#                     request_sizes.append(payload_len)
                     
-                    # คำนวณ Ack ที่คาดหวังจาก Server
-                    expect_ack = int(tcp.seq) + payload_len
+#                     # คำนวณ Ack ที่คาดหวังจาก Server
+#                     expect_ack = int(tcp.seq) + payload_len
                     
-                    if stream_id not in pending_requests:
-                        pending_requests[stream_id] = deque()
+#                     if stream_id not in pending_requests:
+#                         pending_requests[stream_id] = deque()
                     
-                    pending_requests[stream_id].append({
-                        "expect_ack": expect_ack,
-                        "time": curr_time,
-                        "idx": pkt.number
-                    })
-                    print(f"{pkt.number:<8} | {stream_id:<8} | REQUEST | {payload_len}")
+#                     pending_requests[stream_id].append({
+#                         "expect_ack": expect_ack,
+#                         "time": curr_time,
+#                         "idx": pkt.number
+#                     })
+#                     print(f"{pkt.number:<8} | {stream_id:<8} | REQUEST | {payload_len}")
 
-                # 2. จัดการ Response (Server -> Client)
-                elif not is_from_client and payload_len > 0:
+#                 # 2. จัดการ Response (Server -> Client)
+#                 elif not is_from_client and payload_len > 0:
                     
-                    # print(ip.src, tcp.srcport, ip.dst, tcp.dstport)
-                    server_ack = int(tcp.ack)
+#                     # print(ip.src, tcp.srcport, ip.dst, tcp.dstport)
+#                     server_ack = int(tcp.ack)
                     
-                    # กรณี A: เป็นแพ็กเก็ตแรกของ Response (TTFB)
-                    if stream_id in pending_requests and pending_requests[stream_id]:
-                        first_req = pending_requests[stream_id][0]
+#                     # กรณี A: เป็นแพ็กเก็ตแรกของ Response (TTFB)
+#                     if stream_id in pending_requests and pending_requests[stream_id]:
+#                         first_req = pending_requests[stream_id][0]
                         
-                        if server_ack == first_req["expect_ack"]:
-                            req = pending_requests[stream_id].popleft()
-                            latency = (curr_time - req["time"]) * 1000
+#                         if server_ack == first_req["expect_ack"]:
+#                             req = pending_requests[stream_id].popleft()
+#                             latency = (curr_time - req["time"]) * 1000
                             
-                            if latency > 0:
-                                response_times.append(latency)
-                                data_points.append((curr_time, latency))
-                                # เริ่มสะสมขนาด Response สำหรับ Ack นี้
-                                active_responses_size[(stream_id, server_ack)] = payload_len
+#                             if latency > 0:
+#                                 response_times.append(latency)
+#                                 data_points.append((curr_time, latency))
+#                                 # เริ่มสะสมขนาด Response สำหรับ Ack นี้
+#                                 active_responses_size[(stream_id, server_ack)] = payload_len
                                 
-                                print(f"{pkt.number:<8} | {stream_id:<8} | RESPONSE | {latency:.2f} ms (Match Req {req['idx']})")
+#                                 print(f"{pkt.number:<8} | {stream_id:<8} | RESPONSE | {latency:.2f} ms (Match Req {req['idx']})")
                     
-                    # กรณี B: เป็นแพ็กเก็ตต่อเนื่องของ Response เดิม (Multi-packet)
-                    elif (stream_id, server_ack) in active_responses_size:
-                        active_responses_size[(stream_id, server_ack)] += payload_len
+#                     # กรณี B: เป็นแพ็กเก็ตต่อเนื่องของ Response เดิม (Multi-packet)
+#                     elif (stream_id, server_ack) in active_responses_size:
+#                         active_responses_size[(stream_id, server_ack)] += payload_len
 
-            except AttributeError:
-                continue
+#             except AttributeError:
+#                 continue
 
-        # นำขนาด Response ทั้งหมดที่สะสมเสร็จแล้วใส่ลง list
-        response_sizes = list(active_responses_size.values())
-        print("matched packet", relevant_packets)
-    finally:
-        cap.close()
-        exec_time = time.time() - start_time
+#         # นำขนาด Response ทั้งหมดที่สะสมเสร็จแล้วใส่ลง list
+#         response_sizes = list(active_responses_size.values())
+#         print("matched packet", relevant_packets)
+#     finally:
+#         cap.close()
+#         exec_time = time.time() - start_time
         
-        return utility.TCPOutputModel(
-            target_ip=target_ip,
-            exec_time=exec_time,
-            total_packets_count=total_packets,
-            relevant_packets_count=relevant_packets,
-            top_endpoints=endpoints_count.most_common(5),
-            top_ports=ports_count.most_common(5),
-            response_size=utility.get_MinMaxAvg(response_sizes),
-            request_size=utility.get_MinMaxAvg(request_sizes),
-            response_time=utility.get_MinMaxAvg(response_times),
-            graph_response_time=data_points
-        )
+#         return utility.TCPOutputModel(
+#             target_ip=target_ip,
+#             exec_time=exec_time,
+#             total_packets_count=total_packets,
+#             relevant_packets_count=relevant_packets,
+#             top_endpoints=endpoints_count.most_common(5),
+#             top_ports=ports_count.most_common(5),
+#             response_size=utility.get_MinMaxAvg(response_sizes),
+#             request_size=utility.get_MinMaxAvg(request_sizes),
+#             response_time=utility.get_MinMaxAvg(response_times),
+#             graph_response_time=data_points
+#         )
 
 
 
-def get_https_app_response_time3(pcap_file, target_ip, ports=[443], limit=None) -> utility.TCPOutputModel:
-    start_time = time.time()
+# def get_https_app_response_time3(pcap_file, target_ip, ports=[443], limit=None) -> utility.TCPOutputModel:
+#     start_time = time.time()
     
-    response_times = []
-    request_sizes = []
-    response_sizes = [] 
-    data_points = []
+#     response_times = []
+#     request_sizes = []
+#     response_sizes = [] 
+#     data_points = []
     
-    endpoints_count = Counter()
-    ports_count = Counter()
-    total_packets = 0
-    relevant_packets = 0
+#     endpoints_count = Counter()
+#     ports_count = Counter()
+#     total_packets = 0
+#     relevant_packets = 0
 
-    pending_requests = {} 
-    active_responses = {}
+#     pending_requests = {} 
+#     active_responses = {}
 
-    port_filter = " or ".join([f"tcp.port == {p}" for p in ports])
-    display_filter = f"ip.addr == {target_ip} and ({port_filter})"
+#     port_filter = " or ".join([f"tcp.port == {p}" for p in ports])
+#     display_filter = f"ip.addr == {target_ip} and ({port_filter})"
     
-    print(f"\n{'='*95}")
-    print(f"📡 Analyzing: {pcap_file} | Target IP: {target_ip} | Limit: {limit if limit else 'Full File'}")
-    print(f"{'='*95}\n")
-    print(f"{'No.':<8} | {'Stream':<8} | {'Event':<15} | {'Size (B)':<10} | {'Info/Latency'}")
-    print(f"{'-'*95}")
+#     print(f"\n{'='*95}")
+#     print(f"📡 Analyzing: {pcap_file} | Target IP: {target_ip} | Limit: {limit if limit else 'Full File'}")
+#     print(f"{'='*95}\n")
+#     print(f"{'No.':<8} | {'Stream':<8} | {'Event':<15} | {'Size (B)':<10} | {'Info/Latency'}")
+#     print(f"{'-'*95}")
 
-    cap = pyshark.FileCapture(
-        pcap_file,
-        display_filter=display_filter,
-        keep_packets=False,
-        use_json=True
-    )
+#     cap = pyshark.FileCapture(
+#         pcap_file,
+#         display_filter=display_filter,
+#         keep_packets=False,
+#         use_json=True
+#     )
 
-    try:
-        for pkt in cap:
-            # ตรวจสอบ Limit
-            if limit and total_packets >= limit:
-                print(f"\n[!] Reached limit of {limit} packets. Stopping analysis...")
-                break
+#     try:
+#         for pkt in cap:
+#             # ตรวจสอบ Limit
+#             if limit and total_packets >= limit:
+#                 print(f"\n[!] Reached limit of {limit} packets. Stopping analysis...")
+#                 break
                 
-            total_packets += 1
-            try:
-                tcp_layer = pkt.tcp
-                stream_id = tcp_layer.stream
-                curr_time = float(pkt.sniff_timestamp)
-                payload_len = int(tcp_layer.len)
+#             total_packets += 1
+#             try:
+#                 tcp_layer = pkt.tcp
+#                 stream_id = tcp_layer.stream
+#                 curr_time = float(pkt.sniff_timestamp)
+#                 payload_len = int(tcp_layer.len)
                 
-                endpoints_count[pkt.ip.src if pkt.ip.dst == target_ip else pkt.ip.dst] += 1
-                ports_count[tcp_layer.srcport if pkt.ip.dst == target_ip else tcp_layer.dstport] += 1
+#                 endpoints_count[pkt.ip.src if pkt.ip.dst == target_ip else pkt.ip.dst] += 1
+#                 ports_count[tcp_layer.srcport if pkt.ip.dst == target_ip else tcp_layer.dstport] += 1
 
-                is_from_client = (pkt.ip.dst == target_ip)
+#                 is_from_client = (pkt.ip.dst == target_ip)
 
-                # --- [1] ฝั่ง REQUEST (Client -> Server) ---
-                if is_from_client and payload_len > 0:
-                    relevant_packets += 1
-                    expect_ack = int(tcp_layer.seq) + payload_len
+#                 # --- [1] ฝั่ง REQUEST (Client -> Server) ---
+#                 if is_from_client and payload_len > 0:
+#                     relevant_packets += 1
+#                     expect_ack = int(tcp_layer.seq) + payload_len
                     
-                    if stream_id not in pending_requests:
-                        pending_requests[stream_id] = deque()
+#                     if stream_id not in pending_requests:
+#                         pending_requests[stream_id] = deque()
                     
-                    pending_requests[stream_id].append({
-                        "expect_ack": expect_ack,
-                        "time": curr_time,
-                        "idx": pkt.number
-                    })
-                    request_sizes.append(payload_len)
+#                     pending_requests[stream_id].append({
+#                         "expect_ack": expect_ack,
+#                         "time": curr_time,
+#                         "idx": pkt.number
+#                     })
+#                     request_sizes.append(payload_len)
                     
-                    print(f"{pkt.number:<8} | {stream_id:<8} | REQUEST         | {payload_len:<10} | ExpAck: {expect_ack}")
+#                     print(f"{pkt.number:<8} | {stream_id:<8} | REQUEST         | {payload_len:<10} | ExpAck: {expect_ack}")
 
-                # --- [2] ฝั่ง RESPONSE (Server -> Client) ---
-                elif not is_from_client and payload_len > 0:
-                    relevant_packets += 1
-                    server_ack = int(tcp_layer.ack)
-                    res_key = (stream_id, server_ack)
+#                 # --- [2] ฝั่ง RESPONSE (Server -> Client) ---
+#                 elif not is_from_client and payload_len > 0:
+#                     relevant_packets += 1
+#                     server_ack = int(tcp_layer.ack)
+#                     res_key = (stream_id, server_ack)
 
-                    # กรณี A: เป็นแพ็กเก็ตต่อเนื่อง (Multi-packet Response)
-                    if res_key in active_responses:
-                        active_responses[res_key]['total_size'] += payload_len
-                        # พิมพ์แจ้งเตือนเบาๆ ว่ากำลังสะสมข้อมูล
-                        print(f"{pkt.number:<8} | {stream_id:<8} | RESP_CONT       | {payload_len:<10} | (Accumulating for Req#{active_responses[res_key]['req_idx']})")
+#                     # กรณี A: เป็นแพ็กเก็ตต่อเนื่อง (Multi-packet Response)
+#                     if res_key in active_responses:
+#                         active_responses[res_key]['total_size'] += payload_len
+#                         # พิมพ์แจ้งเตือนเบาๆ ว่ากำลังสะสมข้อมูล
+#                         print(f"{pkt.number:<8} | {stream_id:<8} | RESP_CONT       | {payload_len:<10} | (Accumulating for Req#{active_responses[res_key]['req_idx']})")
                     
-                    # กรณี B: เป็นแพ็กเก็ตแรกของ Response ใหม่ (TTFB)
-                    elif stream_id in pending_requests and pending_requests[stream_id]:
-                        # หา Request ที่มีค่า ExpectAck ตรงกับ Ack ของ Server
-                        # ปกติควรจะเป็นอันแรกใน Queue (FIFO)
-                        first_req = pending_requests[stream_id][0]
+#                     # กรณี B: เป็นแพ็กเก็ตแรกของ Response ใหม่ (TTFB)
+#                     elif stream_id in pending_requests and pending_requests[stream_id]:
+#                         # หา Request ที่มีค่า ExpectAck ตรงกับ Ack ของ Server
+#                         # ปกติควรจะเป็นอันแรกใน Queue (FIFO)
+#                         first_req = pending_requests[stream_id][0]
                         
-                        if server_ack == first_req["expect_ack"]:
-                            req = pending_requests[stream_id].popleft()
-                            app_res_time = (curr_time - req["time"]) * 1000 
+#                         if server_ack == first_req["expect_ack"]:
+#                             req = pending_requests[stream_id].popleft()
+#                             app_res_time = (curr_time - req["time"]) * 1000 
                             
-                            if app_res_time > 0:
-                                response_times.append(app_res_time)
-                                data_points.append((curr_time, app_res_time))
+#                             if app_res_time > 0:
+#                                 response_times.append(app_res_time)
+#                                 data_points.append((curr_time, app_res_time))
                                 
-                                active_responses[res_key] = {
-                                    'total_size': payload_len,
-                                    'req_idx': req['idx']
-                                }
+#                                 active_responses[res_key] = {
+#                                     'total_size': payload_len,
+#                                     'req_idx': req['idx']
+#                                 }
                                 
-                                print(f"{pkt.number:<8} | {stream_id:<8} | RESPONSE_START  | {payload_len:<10} | Match Req#{req['idx']} -> {app_res_time:.2f} ms")
+#                                 print(f"{pkt.number:<8} | {stream_id:<8} | RESPONSE_START  | {payload_len:<10} | Match Req#{req['idx']} -> {app_res_time:.2f} ms")
 
-            except AttributeError:
-                continue
+#             except AttributeError:
+#                 continue
 
-        # สรุปผลลัพธ์ในส่วนท้าย
-        print(f"\n{'-'*95}")
-        print(f"📊 Summary of Analysis:")
-        for res in active_responses.values():
-            response_sizes.append(res['total_size'])
+#         # สรุปผลลัพธ์ในส่วนท้าย
+#         print(f"\n{'-'*95}")
+#         print(f"📊 Summary of Analysis:")
+#         for res in active_responses.values():
+#             response_sizes.append(res['total_size'])
         
-        pending_total = sum(len(q) for q in pending_requests.values())
-        print(f"Total Filtered Packets: {total_packets}")
-        print(f"Relevant Data Packets: {relevant_packets}")
-        print(f"Pending Requests (No response found): {pending_total}")
+#         pending_total = sum(len(q) for q in pending_requests.values())
+#         print(f"Total Filtered Packets: {total_packets}")
+#         print(f"Relevant Data Packets: {relevant_packets}")
+#         print(f"Pending Requests (No response found): {pending_total}")
 
-    finally:
-        cap.close()
+#     finally:
+#         cap.close()
         
-    exec_time = time.time() - start_time
-    print(f"Execution Time: {exec_time:.2f}s")
-    print(f"{'='*95}\n")
+#     exec_time = time.time() - start_time
+#     print(f"Execution Time: {exec_time:.2f}s")
+#     print(f"{'='*95}\n")
     
-    return utility.TCPOutputModel(
-        target_ip=target_ip,
-        exec_time=exec_time,
-        total_packets_count=total_packets,
-        relevant_packets_count=relevant_packets,
-        top_endpoints=endpoints_count.most_common(5),
-        top_ports=ports_count.most_common(5),
-        response_size=utility.get_MinMaxAvg(response_sizes),
-        request_size=utility.get_MinMaxAvg(request_sizes),
-        response_time=utility.get_MinMaxAvg(response_times),
-        graph_response_time=data_points
-    ) 
-    
-    
-def tcp_analyze_http1_optimized(pcap_file, target_ip, ports=[], limit=None) -> utility.TCPOutputModel:
-    start_time = time.time()
+#     return utility.TCPOutputModel(
+#         target_ip=target_ip,
+#         tshark
+#         exec_time=exec_time,
+#         total_packets_count=total_packets,
+#         relevant_packets_count=relevant_packets,
+#         top_endpoints=endpoints_count.most_common(5),
+#         top_ports=ports_count.most_common(5),
+#         response_size=utility.get_MinMaxAvg(response_sizes),
+#         request_size=utility.get_MinMaxAvg(request_sizes),
+#         response_time=utility.get_MinMaxAvg(response_times),
+#         graph_response_time=data_points
+#     ) 
     
     
-    port_str = "_".join(map(str, ports)) if ports else "all"
-    output_file = f"result/{target_ip}_{port_str}_analysis.csv"
+# def tcp_analyze_http1_optimized(pcap_file, target_ip, ports=[], limit=None) -> utility.TCPOutputModel:
+#     start_time = time.time()
     
-    # ลบไฟล์เก่าทิ้งก่อนเริ่มรันใหม่ (ถ้าต้องการ)
-    if os.path.exists(output_file):
-        os.remove(output_file)
     
-    chunk = []
-    chunk_size = 10000
+#     port_str = "_".join(map(str, ports)) if ports else "all"
+#     output_file = f"result/{target_ip}_{port_str}_analysis.csv"
+    
+#     # ลบไฟล์เก่าทิ้งก่อนเริ่มรันใหม่ (ถ้าต้องการ)
+#     if os.path.exists(output_file):
+#         os.remove(output_file)
+    
+#     chunk = []
+#     chunk_size = 10000
         
-    # 1. ปรับ Display Filter ให้ดักเฉพาะแพ็กเก็ตที่มี Data (tcp.len > 0)
-    # วิธีนี้จะลดจำนวนแพ็กเก็ตที่เข้า Loop ไปได้มากกว่า 50% (ข้ามพวก ACK เปล่าๆ)
-    port_filter = ""
-    if ports:
-        port_list = " ".join(map(str, ports))
-        port_filter = f" and tcp.port in {{{port_list}}}"
+#     # 1. ปรับ Display Filter ให้ดักเฉพาะแพ็กเก็ตที่มี Data (tcp.len > 0)
+#     # วิธีนี้จะลดจำนวนแพ็กเก็ตที่เข้า Loop ไปได้มากกว่า 50% (ข้ามพวก ACK เปล่าๆ)
+#     port_filter = ""
+#     if ports:
+#         port_list = " ".join(map(str, ports))
+#         port_filter = f" and tcp.port in {{{port_list}}}"
 
-    # เพิ่ม 'tcp.len > 0' ใน filter เพื่อความเร็วสูงสุด
-    display_filter = f"ip.addr == {target_ip} and tcp.len > 0{port_filter}"
+#     # เพิ่ม 'tcp.len > 0' ใน filter เพื่อความเร็วสูงสุด
+#     display_filter = f"ip.addr == {target_ip} and tcp.len > 0{port_filter}"
     
-    # 2. ปรับ Parameter ของ TShark เพื่อความเร็ว
-    # -n: ปิด Name Resolution
-    # -o tcp.desegment_tcp_streams:FALSE: ปิดการรวมข้อมูลที่แยกส่วนกันเพื่อลดการใช้ RAM
-    custom_params = ['-n', '-o', 'tcp.desegment_tcp_streams:FALSE']
+#     # 2. ปรับ Parameter ของ TShark เพื่อความเร็ว
+#     # -n: ปิด Name Resolution
+#     # -o tcp.desegment_tcp_streams:FALSE: ปิดการรวมข้อมูลที่แยกส่วนกันเพื่อลดการใช้ RAM
+#     custom_params = ['-n', '-o', 'tcp.desegment_tcp_streams:FALSE']
 
-    cap = pyshark.FileCapture(
-        pcap_file,
-        display_filter=display_filter,
-        keep_packets=False,
-        use_json=True,
-        custom_parameters=custom_params
-    )
+#     cap = pyshark.FileCapture(
+#         pcap_file,
+#         display_filter=display_filter,
+#         keep_packets=False,
+#         use_json=True,
+#         custom_parameters=custom_params
+#     )
 
-    relevant_packets = 0
-    total_packets = 0
-    resp_times = []
-    data_points = []
+#     relevant_packets = 0
+#     total_packets = 0
+#     resp_times = []
+#     data_points = []
     
-    # ใช้ dict ปกติแทน defaultdict เพื่อความเร็วที่เพิ่มขึ้นเล็กน้อยใน loop ใหญ่
-    pending_requests = {} 
+#     # ใช้ dict ปกติแทน defaultdict เพื่อความเร็วที่เพิ่มขึ้นเล็กน้อยใน loop ใหญ่
+#     pending_requests = {} 
 
-    print(f"Analyzing {pcap_file} (Optimized)...")
+#     print(f"Analyzing {pcap_file} (Optimized)...")
 
-    try:
-        for pkt in cap:
-            total_packets += 1
-            if limit and total_packets > limit:
-                break
+#     try:
+#         for pkt in cap:
+#             total_packets += 1
+#             if limit and total_packets > limit:
+#                 break
                 
-            try:
-                tcp = pkt.tcp
-                ip = pkt.ip
-                stream_id = tcp.stream
-                curr_time = float(pkt.sniff_timestamp)
+#             try:
+#                 tcp = pkt.tcp
+#                 ip = pkt.ip
+#                 stream_id = tcp.stream
+#                 curr_time = float(pkt.sniff_timestamp)
                 
-                # แยกฝั่ง Client/Server (ใช้วิธีเช็ค IP ปลายทาง)
-                is_from_client = (ip.dst == target_ip)
+#                 # แยกฝั่ง Client/Server (ใช้วิธีเช็ค IP ปลายทาง)
+#                 is_from_client = (ip.dst == target_ip)
                 
-                # 1. Request (Client -> Server)
-                if is_from_client:
-                    if stream_id not in pending_requests:
-                        pending_requests[stream_id] = {}
+#                 # 1. Request (Client -> Server)
+#                 if is_from_client:
+#                     if stream_id not in pending_requests:
+#                         pending_requests[stream_id] = {}
                     
-                    # จดบันทึกเวลาที่ nxtseq นี้ควรจะได้รับการ ACK กลับมา
-                    pending_requests[stream_id][tcp.nxtseq] = curr_time
+#                     # จดบันทึกเวลาที่ nxtseq นี้ควรจะได้รับการ ACK กลับมา
+#                     pending_requests[stream_id][tcp.nxtseq] = curr_time
                 
-                # 2. Response (Server -> Client)
-                else:
-                    # เช็คว่า ACK นี้ตรงกับ Request ตัวไหนใน Stream นี้
-                    if stream_id in pending_requests:
-                        req_time = pending_requests[stream_id].pop(tcp.ack, None)
+#                 # 2. Response (Server -> Client)
+#                 else:
+#                     # เช็คว่า ACK นี้ตรงกับ Request ตัวไหนใน Stream นี้
+#                     if stream_id in pending_requests:
+#                         req_time = pending_requests[stream_id].pop(tcp.ack, None)
                         
-                        if req_time:
-                            app_res_time = (curr_time - req_time) * 1000
+#                         if req_time:
+#                             app_res_time = (curr_time - req_time) * 1000
                             
-                            if app_res_time > 0:
-                                relevant_packets += 1
-                                resp_times.append(round(app_res_time, 2))
-                                data_points.append((curr_time, app_res_time))
+#                             if app_res_time > 0:
+#                                 relevant_packets += 1
+#                                 resp_times.append(round(app_res_time, 2))
+#                                 data_points.append((curr_time, app_res_time))
 
-            except AttributeError:
-                continue
+#             except AttributeError:
+#                 continue
 
-    finally:
-        cap.close()
+#     finally:
+#         cap.close()
 
-    exec_time = time.time() - start_time
+#     exec_time = time.time() - start_time
     
-    # คำนวณสถิติส่งกลับ (ใช้ utility ที่คุณมี)
-    return utility.TCPOutputModel(
-        target_ip=target_ip,
-        exec_time=exec_time,
-        total_packets_count=total_packets,
-        relevant_packets_count=relevant_packets,
-        top_endpoints=[], # เพิ่ม Counter เองตามต้องการ
-        top_ports=[],
-        response_size=utility.get_MinMaxAvg([]),
-        request_size=utility.get_MinMaxAvg([]),
-        response_time=utility.get_MinMaxAvg(resp_times),
-        csv_file=output_file
-    )
+#     # คำนวณสถิติส่งกลับ (ใช้ utility ที่คุณมี)
+#     return utility.TCPOutputModel(
+#         target_ip=target_ip,
+#         exec_time=exec_time,
+#         total_packets_count=total_packets,
+#         relevant_packets_count=relevant_packets,
+#         top_endpoints=[], # เพิ่ม Counter เองตามต้องการ
+#         top_ports=[],
+#         response_size=utility.get_MinMaxAvg([]),
+#         request_size=utility.get_MinMaxAvg([]),
+#         response_time=utility.get_MinMaxAvg(resp_times),
+#         csv_file=output_file
+#     )
     
     

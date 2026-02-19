@@ -164,6 +164,7 @@ class TCPOutputModel(BaseModel):
     response_size : MinMaxAvg
     response_time : MinMaxAvg
     exec_time : float
+    tshark_filterd_time : float
     top_ports : list[tuple]
     top_endpoints : list[tuple]
     csv_file: str
