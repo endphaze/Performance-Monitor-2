@@ -3,20 +3,18 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import os
 
-def plot_graph(csv_file):
+def plot_graph_rps(df, base_name):
     # 1. โหลดข้อมูล
-    df = pd.read_csv(csv_file)
     
     # ดึงชื่อไฟล์ออกมา (เช่น apache_0.5_100)
-    base_name = os.path.splitext(os.path.basename(csv_file))[0]
     
     # 2. แปลงเวลา Unix Epoch เป็น Datetime object
     df['dt'] = pd.to_datetime(df['time'], unit='s')
     df.set_index('dt', inplace=True)
     
     # 3. แยกนับจำนวน Request และ Response ต่อวินาที
-    req_per_sec = df[df['role'] == 'request'].resample('1s').size()
-    resp_per_sec = df[df['role'] == 'response'].resample('1s').size()
+    req_per_sec = df[df['type'] == 'request'].resample('1s').size()
+    resp_per_sec = df[df['type'] == 'response'].resample('1s').size()
     
     # สร้าง DataFrame รวม
     stats = pd.DataFrame({
@@ -50,6 +48,47 @@ def plot_graph(csv_file):
     save_path = f'result/graph/{base_name}_split_graph.png'
     plt.savefig(save_path, dpi=300)
     print(f"บันทึกกราฟแยกเรียบร้อยที่: {save_path}")
+    return save_path
+
+
+def plot_graph_response_time(df, base_name):
+    # 1. เตรียมข้อมูล: แปลงเวลา Unix Epoch เป็น Datetime object
+    df['dt'] = pd.to_datetime(df['time'], unit='s')
+    
+    # 2. กรองข้อมูลเฉพาะ 'response' และตั้ง Index เป็นเวลา
+    # เนื่องจากค่า response_time จะสัมพันธ์กับแพ็กเก็ตขาตอบกลับเท่านั้น
+    df_res = df[df['type'] == 'response'].copy()
+    df_res.set_index('dt', inplace=True)
+    
+    # 3. คำนวณค่าเฉลี่ย Response Time ต่อวินาที (หรือจะพล็อตข้อมูลดิบเลยก็ได้)
+    # การ Resample ช่วยให้กราฟไม่หนาแน่นจนเกินไปในกรณีที่มี Request จำนวนมากใน 1 วินาที
+    res_avg_sec = df_res['response_time'].resample('1s').mean().fillna(0)
+
+    # 4. สร้างกราฟเดี่ยว (Single Plot)
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    ax.plot(res_avg_sec.index, res_avg_sec.values, color='forestgreen', linewidth=2, label='Avg Response Time')
+    
+    # ตกแต่งกราฟ
+    ax.set_title(f'Response Time Analysis - {base_name}', fontsize=14)
+    ax.set_xlabel('Timestamp (HH:MM:SS)', fontsize=12)
+    ax.set_ylabel('Response Time (ms)', fontsize=12)
+    ax.grid(True, linestyle='--', alpha=0.6)
+    ax.legend()
+
+    # จัดรูปแบบการแสดงผลเวลาบนแกน X
+    xfmt = mdates.DateFormatter('%H:%M:%S')
+    ax.xaxis.set_major_formatter(xfmt)
+    plt.xticks(rotation=45)
+
+    plt.tight_layout()
+    
+    # 5. บันทึกรูปภาพ
+    save_path = f'result/graph/{base_name}_response_time.png'
+    plt.savefig(save_path, dpi=300)
+    print(f"บันทึกกราฟ Response Time เรียบร้อยที่: {save_path}")
+    
+    return save_path
 
 
 def plot_graph_overlay(csv_file):

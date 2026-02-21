@@ -7,13 +7,49 @@ from dataclasses import asdict
 from collections import Counter, deque, defaultdict, namedtuple
 from datetime import datetime
 
-def tcp_analyze(pcap_file, target_ip, ports=None) -> utility.TCPOutputModel:
+def tcp_analyze(pcap_file, target_ip,output_folder="", ports=None) -> utility.TCPOutputModel:
     
     print(f"Reading {pcap_file} with PyShark...")
     
+
+    
+    # เริ่มจับเวลา
+    start_time = time.time()
+    
+    
+    if output_folder == "":
+        output_folder = "result"
+    
+    port_str = "_".join(map(str, ports)) if ports else "all"
+    output_file = f"{output_folder}/{target_ip}_{port_str}_analysis.csv"
+    
+    # ลบไฟล์เก่าทิ้งก่อนเริ่มรันใหม่
+    if os.path.exists(output_file):
+        os.remove(output_file)
+        
+    # สร้าง Display Filter ให้ TShark กรองข้อมูลตั้งแต่ระดับล่าง
+    if ports:
+        port_filter = " or ".join([f"tcp.port == {p}" for p in ports])
+        display_filter = f"ip.addr == {target_ip} and ({port_filter}) and tcp and tcp.payload > 0"
+    else:
+        display_filter = f"ip.addr == {target_ip} and tcp.payload > 0 and tcp"
+    
+    cap = pyshark.FileCapture(
+        pcap_file,
+        display_filter=display_filter,
+        keep_packets=False,
+        use_json=False
+    )
+    
+    tshark_filtered_time = time.time() - start_time
+
     # เตรียมตัวแปรสำหรับเก็บสถิติ
     total_packets = 0
     relevant_packets = 0
+    
+    chunk = []
+    chunk_size = 10000
+    resp_times = []
     
     response_times = []
     request_sizes = []
@@ -22,21 +58,6 @@ def tcp_analyze(pcap_file, target_ip, ports=None) -> utility.TCPOutputModel:
     
     ports_count = Counter()
     endpoints_count = Counter()
-
-    # สร้าง Display Filter ให้ TShark กรองข้อมูลตั้งแต่ระดับล่าง
-    display_filter = f"tcp.port == 8080 and ip"
-    
-    # เริ่มจับเวลา
-    start_time = time.time()
-    
-    # ใช้ FileCapture อ่าน .pcap ตั้งค่าให้ประหยัดแรม
-    cap = pyshark.FileCapture(
-        pcap_file, 
-        display_filter=display_filter,
-        keep_packets=False,
-        use_json=True
-    )
-
     print(f"{'No.':<8} | {'Source':<15} | {'Dest':<15} | {'RTT (ms)':<10}")
     print("-" * 60)
 
@@ -50,17 +71,27 @@ def tcp_analyze(pcap_file, target_ip, ports=None) -> utility.TCPOutputModel:
                     continue
                 ip_layer = pkt.ip
                 tcp_layer = pkt.tcp
-                # print(ip_layer.src, tcp_layer.srcport)
+                total_packets +=1
+                stream_id = tcp_layer.stream
+                curr_time = float(pkt.sniff_timestamp)
+                payload_len = int(tcp_layer.len)
+
                 
+                metrics = utility.PacketMetrics(
+                    time=curr_time,
+                    response_time=0,
+                    pending_req=get_all_pending_reqs(pending_requests),
+                    stream_id=stream_id,
+                    type=""
+                )
                 
-                # if hasattr(tcp_layer.analysis, "ack_rtt"):
-                #     print(tcp_layer.analysis.ack_rtt)
-                # ตรวจสอบ Port  (ถ้ามีการส่ง list ของ ports มา)
-                # current_port = int(tcp_layer.srcport) if ip_layer.src == target_ip else int(tcp_layer.dstport)
-                # if ports and current_port not in ports:
-                #     continue
-                
-                
+                if len(chunk) >= chunk_size:
+                    df_chunk = pd.DataFrame(chunk)
+                    # append เข้าไปในไฟล์, header เขียนแค่ครั้งแรกที่สร้างไฟล์
+                    df_chunk.to_csv(output_file, mode='a', index=False, 
+                                header=not os.path.exists(output_file))
+                    chunk = [] # เคลียร์แรม
+                    print(f"Saved chunk: {total_packets} packets processed...")                
                 
                 
                 relevant_packets += 1
@@ -72,13 +103,14 @@ def tcp_analyze(pcap_file, target_ip, ports=None) -> utility.TCPOutputModel:
                     request_sizes.append(pkt_size)
                     ports_count[int(tcp_layer.dstport)] += 1
                     endpoints_count[ip_layer.src] += 1
+                    
                     # print(ip_layer.src, tcp_layer.srcport, ip_layer.dst, tcp_layer.dstport)
                     
                 elif ip_layer.src == target_ip and tcp_layer.srcport == "8080":
                     # Case: Response (ส่งจาก Target)
                     response_sizes.append(pkt_size)
                     
-                    # ดึงค่า RTT ที่ Wireshark คำนวณไว้ (ถ้ามี)
+                    # ดึงค่า RTT ที่ Wireshark คำนวณไว้ 
                     if hasattr(tcp_layer.analysis, "ack_rtt"):
                         rtt_val = float(tcp_layer.analysis.ack_rtt)
                         response_times.append(rtt_val)
@@ -98,6 +130,7 @@ def tcp_analyze(pcap_file, target_ip, ports=None) -> utility.TCPOutputModel:
     return utility.TCPOutputModel(
         target_ip=target_ip,
         exec_time=exec_time,
+        tshark_filtered_time=tshark_filtered_time,
         total_packets_count=total_packets, # ในโหมดนี้จะเป็น count ของ filtered packets
         relevant_packets_count=relevant_packets,
         top_endpoints=endpoints_count.most_common(5),
@@ -105,7 +138,7 @@ def tcp_analyze(pcap_file, target_ip, ports=None) -> utility.TCPOutputModel:
         response_size=utility.get_MinMaxAvg(response_sizes),
         request_size=utility.get_MinMaxAvg(request_sizes),
         response_time=utility.get_MinMaxAvg(response_times),
-        graph_response_time=data_points
+        csv_file=output_file
     )
     
 
@@ -143,16 +176,20 @@ def tcp_analyze_http1(pcap_file, target_ip, output_folder = "", ports=[], limit=
     
     cap = pyshark.FileCapture(
         pcap_file,
-        display_filter="tcp",
+        display_filter=display_filter,
         keep_packets=False,
         use_json=False
     )
+    
+    unknown_packet=[]
     
     tshark_filterd_time = time.time() - start_time
     
     # เก็บค่าสถิติต่างๆ
     relevant_packets = 0
     total_packets = 0
+    total_requests = 0
+    total_responses = 0
     endpoints_count = Counter()
     ports_count = Counter()
     response_sizes = []
@@ -170,7 +207,10 @@ def tcp_analyze_http1(pcap_file, target_ip, output_folder = "", ports=[], limit=
         use_json=True
     )
 
-    # เก็บเวลาของ Request ล่าสุดแยกตาม Stream ID
+    # เก็บข้อมูลของ Request ล่าสุดแยกตาม Stream ID
+    # ในแถวจะมีตารางของ Request ใน Stream ID โดยมี key คือ Expected Sequence
+    # { Steam ID 1 : {Expected Sequence 1: {ข้อมูลเวลา,index}, Expected Sequence 2: {ข้อมูลเวลา,index}, ...}
+    # 
     pending_requests = defaultdict(dict)
     
     print(f"{'Stream':<8} | {"Req Index":<8} | {"Resp Index":<8} | {'Response Time (ms)':<12}")
@@ -206,6 +246,7 @@ def tcp_analyze_http1(pcap_file, target_ip, output_folder = "", ports=[], limit=
                         active_streams.remove(stream_id)
                 
                 #ทำไมต้องใช้ data class จาก pandas แทนที่จะใช้ BaseModel
+                
                 metrics = utility.PacketMetrics(
                     time=curr_time,
                     response_time=0,
@@ -236,13 +277,16 @@ def tcp_analyze_http1(pcap_file, target_ip, output_folder = "", ports=[], limit=
                 # 1. ถ้ามี Data จาก Client -> Server ตัดสินว่านี่คือ Request
                 if is_from_client:
                     pending_requests[stream_id][tcp_layer.nxtseq] = {"time": curr_time,
-                        "idx": pkt.number,
-                        "seq": tcp_layer.seq}
+                        "idx": pkt.number}
                     ports_count[tcp_layer.dstport] += 1
                     endpoints_count[ip_layer.src] += 1
-                    metrics.role = "request"
+                    metrics.type = "request"
+                    request_sizes.append(payload_len)
+                    total_requests += 1
+                    
+                    
                     #print("request:stream_id", stream_id, payload_len, f"index: {pkt.number}")
-                
+                    # "seq": tcp_layer.seq}
                 
                 # 2. ถ้ามี Data จาก Server -> Client ตัดสินว่านี่คือ Response
                 elif not is_from_client:
@@ -253,32 +297,43 @@ def tcp_analyze_http1(pcap_file, target_ip, output_folder = "", ports=[], limit=
                         app_res_time = (curr_time - req["time"]) * 1000
                         resp_times.append(round(app_res_time,2))
                         
+                        
                         # กรองเฉพาะค่าที่เป็นบวก (ป้องกันกรณี Out-of-order)
                         if app_res_time > 0:
                             #print("\nresponse:stream_id", stream_id, f"request idx {req["idx"]} responsed by idx {pkt.number}", "response time =", round(app_res_time,2))
                             #print(f"req_seq = {req["seq"]}", f"resp_seq = {pkt.tcp.seq}, resp_ack {pkt.tcp.ack}")
                             metrics.response_time = round(app_res_time, 3)
-                            metrics.role = "response"
+                            metrics.type = "response"
+                            response_sizes.append(payload_len)
+                            response_times.append(app_res_time)
+                            total_responses += 1
                             print(f"{stream_id:<8} | {req["idx"]:<9} | {pkt.number:<10} | {app_res_time:>10.3f} ms")
                             
                 
                 
-                
+                if metrics.type == "":
+                    unknown_packet.append(pkt.number)
                 chunk.append(asdict(metrics))
             except AttributeError as e:
                 print(e)
                 continue
         
-        print("matched pairs", relevant_packets)
-        print(utility.get_MinMaxAvg(resp_times))
-        print("total", total_packets)
-        print("\ntcp stream connection counts", len(pending_requests))
         cant_find_response = 0
         for reqs in pending_requests.values():
             cant_find_response += len(reqs)
-            
-        print(f"{cant_find_response} requests cant find response.")
         
+        print("matched pairs", relevant_packets)
+        print(utility.get_StatModel(resp_times))
+        print("total packets from tshark filtered", total_packets)
+        print("total requests", total_requests)
+        print("total responses", total_responses)
+        print("requests can't find respone", cant_find_response)
+        print("tcp stream connection counts", len(pending_requests))
+        
+        
+        # print(f"{cant_find_response} requests cant find response.")
+        # print("unknown packets")
+        # print(unknown_packet)
         
     finally:
         cap.close()
@@ -293,15 +348,15 @@ def tcp_analyze_http1(pcap_file, target_ip, output_folder = "", ports=[], limit=
         
         return utility.TCPOutputModel(
         target_ip=target_ip,
-        tshark_filterd_time=tshark_filterd_time,
+        tshark_filtered_time=tshark_filterd_time,
         exec_time=exec_time,
         total_packets_count=total_packets, # ในโหมดนี้จะเป็น count ของ filtered packets
         relevant_packets_count=relevant_packets,
         top_endpoints=endpoints_count.most_common(5),
         top_ports=ports_count.most_common(5),
-        response_size=utility.get_MinMaxAvg(response_sizes),
-        request_size=utility.get_MinMaxAvg(request_sizes),
-        response_time=utility.get_MinMaxAvg(response_times),
+        response_size=utility.get_StatModel(response_sizes),
+        request_size=utility.get_StatModel(request_sizes),
+        response_time=utility.get_StatModel(response_times),
         csv_file=output_file
     )
 

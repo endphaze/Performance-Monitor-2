@@ -3,10 +3,13 @@ import re, subprocess
 import time, json
 import statistics, csv
 
+
+
 from dataclasses import dataclass
 from pathlib import Path
 from pydantic import BaseModel, IPvAnyAddress, Field, computed_field
 from datetime import datetime
+
 
 def _filter_pcap_files(abs_file_list, protocol="any", src_ip="any", src_port="any", dst_ip="any", dst_port="any"):
     filtered_abs_paths = []
@@ -150,21 +153,22 @@ class ConfigModel(BaseModel):
         return f"TCP Analysis Report for {self.target_ip}"
     
     
-class MinMaxAvg(BaseModel):
+class StatModel(BaseModel):
     """กลุ่มข้อมูลสถิติพื้นฐาน Min Max Average"""
     min: float
     max: float
     avg: float
+    stddev: float
 
 class TCPOutputModel(BaseModel):
     target_ip : IPvAnyAddress
     total_packets_count : int
     relevant_packets_count : int
-    request_size : MinMaxAvg
-    response_size : MinMaxAvg
-    response_time : MinMaxAvg
+    request_size : StatModel
+    response_size : StatModel
+    response_time : StatModel
     exec_time : float
-    tshark_filterd_time : float
+    tshark_filtered_time : float
     top_ports : list[tuple]
     top_endpoints : list[tuple]
     csv_file: str
@@ -178,14 +182,14 @@ class PacketMetrics:
     type: str
 
 
-
-def get_MinMaxAvg(list_data) -> MinMaxAvg:
+def get_StatModel(list_data) -> StatModel:
     """Input [] for MinMaxAvg"""
     if not list_data:   
-        return MinMaxAvg(min=0,max=0,avg=0)
-    return MinMaxAvg(min=min(list_data),
+        return StatModel(min=0,max=0,avg=0, stddev=0)
+    return StatModel(min=min(list_data),
                      max=max(list_data),
-                     avg=statistics.mean(list_data))
+                     avg=statistics.mean(list_data),
+                     stddev=statistics.stdev(list_data))
 
 def get_config(file_path="config.json"):
     # ถ้าไม่มีไฟล์ ให้สร้างไฟล์เริ่มต้นจาก ConfigModel

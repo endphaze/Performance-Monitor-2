@@ -6,7 +6,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 from tools.utility import save_data_to_csv
 import tools.graph_generator as graph_generator
-from tools.tcp_analysis_pyshark import tcp_analyze, get_https_app_response_time2
+from tools.tcp_analysis_pyshark import tcp_analyze
 
 
 pcap_file = "pcap/TCP Test 5.pcap"
@@ -15,7 +15,7 @@ output_graph = f"result/graph/graph_resp-t_{target_ip}.png"
 output_pdf = f"result/report_tcp_{target_ip}.pdf"
 title = f"TCP Analysis Report for {target_ip}"
 
-output = get_https_app_response_time2(pcap_file, target_ip, [], limit=1000)
+output = tcp_analyze(pcap_file, target_ip, [])
 for field in output:
     print(field)
 
@@ -100,4 +100,4 @@ print(f"  Request  - Min: {min_req:<10} Max: {max_req:<10} Avg: {avg_req:.2f}")
 print(f"  Response - Min: {min_res:<10} Max: {max_res:<10} Avg: {avg_res:.2f}")
 
 
-print("excuted time = ", round(exec_time, 6), "sec")
+print("excuted time = ", round(exec_time, 3), "sec")

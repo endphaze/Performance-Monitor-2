@@ -1,5 +1,4 @@
 # My Customs
-TCP_Feature/tools/__pycache__/
 TCP_Feature/pcap/
 .venv
 venv_ubuntu
