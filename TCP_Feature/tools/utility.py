@@ -175,6 +175,7 @@ class TCPOutputModel(BaseModel):
     
 @dataclass(slots=True)
 class PacketMetrics:
+    number: int
     time: datetime
     response_time: float
     pending_req: int

@@ -7,6 +7,14 @@ from dataclasses import asdict
 from collections import Counter, deque, defaultdict, namedtuple
 from datetime import datetime
 
+RESET = '\033[0m'
+GREEN = '\033[32m'
+RED = '\033[31m'
+CYAN = '\033[96m'
+BOLD = '\033[1m'
+BLUE = '\033[94m'
+YELLOW = '\033[93m'
+
 def tcp_analyze(pcap_file, target_ip,output_folder="", ports=None) -> utility.TCPOutputModel:
     
     print(f"Reading {pcap_file} with PyShark...")
@@ -204,17 +212,21 @@ def tcp_analyze_http1(pcap_file, target_ip, output_folder = "", ports=[], limit=
         pcap_file,
         display_filter=display_filter,
         keep_packets=False,
-        use_json=True
+        use_json=True,
+        custom_parameters=["-2"]
     )
 
     # เก็บข้อมูลของ Request ล่าสุดแยกตาม Stream ID
     # ในแถวจะมีตารางของ Request ใน Stream ID โดยมี key คือ Expected Sequence
-    # { Steam ID 1 : {Expected Sequence 1: {ข้อมูลเวลา,index}, Expected Sequence 2: {ข้อมูลเวลา,index}, ...}
-    # 
+    # { 
+    #   Steam ID 1 : {Expected Sequence 1: {ข้อมูลเวลา,index}, Expected Sequence 2: {ข้อมูลเวลา,index}, ...}
+    #   Steam ID 2 : {Expected Sequence 3: {ข้อมูลเวลา,index}, Expected Sequence 4: {ข้อมูลเวลา,index}, ...} 
+    # }
     pending_requests = defaultdict(dict)
     
     print(f"{'Stream':<8} | {"Req Index":<8} | {"Resp Index":<8} | {'Response Time (ms)':<12}")
     print("-" * 50)
+
     
     try:
         for pkt in cap:            
@@ -230,24 +242,25 @@ def tcp_analyze_http1(pcap_file, target_ip, output_folder = "", ports=[], limit=
                 payload_len = int(tcp_layer.len)
                 
                 
-                # --- 1. ตรวจสอบการเริ่มต้น/ทำงาน ---
-                # ถ้ามีข้อมูลวิ่งอยู่ ให้ถือว่า stream นี้ยัง active
-                active_streams.add(stream_id)
+                # # --- 1. ตรวจสอบการเริ่มต้น/ทำงาน ---
+                # # ถ้ามีข้อมูลวิ่งอยู่ ให้ถือว่า stream นี้ยัง active
+                # # active_streams.add(stream_id)
 
-                # --- 2. ตรวจสอบการจบการเชื่อมต่อ (FIN หรือ RST) ---
-                # เช็ค Flag เพื่อดูว่าการเชื่อมต่อสิ้นสุดลงหรือไม่
-                flags = int(tcp_layer.flags, 16)
-                FIN = 0x01
-                RST = 0x04
+                # # --- 2. ตรวจสอบการจบการเชื่อมต่อ (FIN หรือ RST) ---
+                # # เช็ค Flag เพื่อดูว่าการเชื่อมต่อสิ้นสุดลงหรือไม่
+                # # flags = int(tcp_layer.flags, 16)
+                # # FIN = 0x01
+                # # RST = 0x04
                 
-                if flags & FIN or flags & RST:
-                    # ถ้าเจอแพ็กเก็ตปิดการเชื่อมต่อ ให้เอาออกจาก set
-                    if stream_id in active_streams:
-                        active_streams.remove(stream_id)
+                # # if flags & FIN or flags & RST:
+                # #     # ถ้าเจอแพ็กเก็ตปิดการเชื่อมต่อ ให้เอาออกจาก set
+                # #     if stream_id in active_streams:
+                # #         active_streams.remove(stream_id)
                 
-                #ทำไมต้องใช้ data class จาก pandas แทนที่จะใช้ BaseModel
+                # #ทำไมต้องใช้ data class จาก pandas แทนที่จะใช้ BaseModel
                 
                 metrics = utility.PacketMetrics(
+                    number=pkt.number,
                     time=curr_time,
                     response_time=0,
                     pending_req=get_all_pending_reqs(pending_requests),
@@ -255,8 +268,6 @@ def tcp_analyze_http1(pcap_file, target_ip, output_folder = "", ports=[], limit=
                     type=""
                 )
                 
-                
-
                 if len(chunk) >= chunk_size:
                     df_chunk = pd.DataFrame(chunk)
                     # append เข้าไปในไฟล์, header เขียนแค่ครั้งแรกที่สร้างไฟล์
@@ -274,49 +285,84 @@ def tcp_analyze_http1(pcap_file, target_ip, output_folder = "", ports=[], limit=
                     # กรณีทั่วไป: ใช้ IP ปลายทางเป็นตัวตัดสิน
                     is_from_client = (ip_layer.dst == target_ip)
                     
+                
+
                 # 1. ถ้ามี Data จาก Client -> Server ตัดสินว่านี่คือ Request
                 if is_from_client:
-                    pending_requests[stream_id][tcp_layer.nxtseq] = {"time": curr_time,
-                        "idx": pkt.number}
-                    ports_count[tcp_layer.dstport] += 1
-                    endpoints_count[ip_layer.src] += 1
-                    metrics.type = "request"
-                    request_sizes.append(payload_len)
-                    total_requests += 1
+                    # ตรวจสอบว่ามี packet request อันเดียวกันมั้ย
+                    if stream_id in pending_requests:
+                        # print(f"packet number {pkt.number} have segment in pending requests")
+                        # ลอง pop โดยใช้ seq number ก่อนถ้าได้ค่ามาแสดงว่าเป็น request เดียวกัน
+                        prev_req_segment = pending_requests[stream_id].pop(tcp_layer.seq, None)
+                        
+                        if prev_req_segment:
+                            # update ข้อมูล request เป็น segment ล่าสุด
+                                
+                            pending_requests[stream_id][tcp_layer.nxtseq] = {"idx": pkt.number}
+                            
+                            metrics.type = "continuation"    
+                            request_sizes.append(payload_len)
+                            print(f"packet number {pkt.number} is {YELLOW}continuation of {prev_req_segment["idx"]}{RESET}")
+                        else:
+                            # หากอยู่ใน Stream เดียวกันแต่ไม่ใช่ Segment ต่อจาก Request ที่แล้ว
+                            # คาดว่าอาจเป็น retransmission ให้ mark เอาไว้ และสร้าง Request ใหม่
+                            print(f"packet number {pkt.number} {RED}is suspected retransmission but create new request{RESET}")
+                            # print(f"stream {stream_id}" ,pending_requests[stream_id])
+                            # prev_request = pending_requests[stream_id][tcp_layer.nxtseq]
+                            pending_requests[stream_id][tcp_layer.nxtseq] = {
+                                                                            "idx": pkt.number}
+                                                                            # "request_idx": prev_request["request_idx"],
+                                                                            # }
+                            metrics.type = "retransmission"   
+                            # print(f"stream {stream_id}" ,pending_requests[stream_id])
+
+                    else:
+                        # ถ้าไม่เจอ Request เดิม สร้างข้อมูล Request ใหม่และนับค่าสถิติ
+
+                        pending_requests[stream_id][tcp_layer.nxtseq] = {"idx": pkt.number}
+                        
+                        pending_requests[stream_id] = {"request_idx" : pkt.number,
+                                                       "request_time": curr_time}
                     
-                    
-                    #print("request:stream_id", stream_id, payload_len, f"index: {pkt.number}")
-                    # "seq": tcp_layer.seq}
+                        print(f"packet number {pkt.number} {BOLD}{BLUE}is first request segment{RESET}")
+                        ports_count[tcp_layer.dstport] += 1
+                        endpoints_count[ip_layer.src] += 1
+                        metrics.type = "request"
+                        request_sizes.append(payload_len)
+                        total_requests += 1
+                        
+
+                #     #print("request:stream_id", stream_id, payload_len, f"index: {pkt.number}")
+                #     # "seq": tcp_layer.seq}
                 
                 # 2. ถ้ามี Data จาก Server -> Client ตัดสินว่านี่คือ Response
+                
                 elif not is_from_client:
-                    if stream_id in pending_requests and tcp_layer.ack in pending_requests[stream_id]:
+                    if stream_id in pending_requests:
                         # คำนวณเวลาที่ห่างกัน
-                        relevant_packets += 1
-                        req = pending_requests[stream_id].pop(tcp_layer.ack)
-                        app_res_time = (curr_time - req["time"]) * 1000
-                        resp_times.append(round(app_res_time,2))
                         
-                        
-                        # กรองเฉพาะค่าที่เป็นบวก (ป้องกันกรณี Out-of-order)
-                        if app_res_time > 0:
-                            #print("\nresponse:stream_id", stream_id, f"request idx {req["idx"]} responsed by idx {pkt.number}", "response time =", round(app_res_time,2))
-                            #print(f"req_seq = {req["seq"]}", f"resp_seq = {pkt.tcp.seq}, resp_ack {pkt.tcp.ack}")
-                            metrics.response_time = round(app_res_time, 3)
-                            metrics.type = "response"
-                            response_sizes.append(payload_len)
-                            response_times.append(app_res_time)
+                        req = pending_requests[stream_id].pop(tcp_layer.ack, None)
+                        if req:    
+                            relevant_packets += 1
+                            request_idx = pending_requests[stream_id].pop("request_idx", None)
+                            request_time = pending_requests[stream_id].pop("request_time", None)
+                            app_res_time = (curr_time - request_time) * 1000
+                            resp_times.append(round(app_res_time,3))
                             total_responses += 1
-                            print(f"{stream_id:<8} | {req["idx"]:<9} | {pkt.number:<10} | {app_res_time:>10.3f} ms")
-                            
+                            metrics.type = "response"
+                            metrics.response_time = round(app_res_time, 3)
+                            print(f"packet number {pkt.number} is {GREEN}response for {request_idx} with Response Time {round(app_res_time,3)} {RESET}")
+                        # print(f"{stream_id:<8} | {req["idx"]:<9} | {pkt.number:<10} | {app_res_time:>10.3f} ms")
+                        
                 
                 
-                if metrics.type == "":
-                    unknown_packet.append(pkt.number)
                 chunk.append(asdict(metrics))
-            except AttributeError as e:
+            except Exception as e:
                 print(e)
+                input()
                 continue
+        
+        
         
         cant_find_response = 0
         for reqs in pending_requests.values():
@@ -324,6 +370,7 @@ def tcp_analyze_http1(pcap_file, target_ip, output_folder = "", ports=[], limit=
         
         print("matched pairs", relevant_packets)
         print(utility.get_StatModel(resp_times))
+        print("display filtered ", display_filter)
         print("total packets from tshark filtered", total_packets)
         print("total requests", total_requests)
         print("total responses", total_responses)
