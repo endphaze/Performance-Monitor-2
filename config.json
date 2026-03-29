@@ -1,0 +1,12 @@
+{
+  "database_name": "NetworkAnalysis",
+  "db_uri": "mongodb://localhost:27017",
+  "upload_dir": "uploads",
+  "result_dir": "results",
+  "queue_size": 100000,
+  "chunk_size": 10000,
+  "interface": "lo",
+  "pcap_file" : "pcap/tcp/realtest1_172.20.10.6.pcap"
+}
+
+

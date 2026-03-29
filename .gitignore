@@ -1,5 +1,6 @@
 # My Customs
 TCP_Feature/pcap/
+pcap
 .venv
 venv_ubuntu
 zeek*

@@ -1,0 +1,4 @@
+threshold:
+  response_time:
+    15 : Red
+    10 : Orange
