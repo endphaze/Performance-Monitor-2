@@ -53,7 +53,7 @@ def flatten_layers(layers_dict):
 
 def stream_tshark_output(display_filter, fields=[], count=None):
     
-    pcap_path = "pcap/tcp/mininet_test2.pcap"
+    pcap_path = "pcap/tcp/carbon_test.pcap"
     
     cmd = [
         "tshark", 
@@ -110,8 +110,9 @@ def stream_tshark_output(display_filter, fields=[], count=None):
 
   
         
-fields = ["frame.number", "ip", "tcp.analysis.ack_rtt", "_ws.expert.message", "http.time"]
-display_filter = 'ip.addr == 192.168.1.11 and http'
+fields = ["frame.number","ip.src", "ip.dst", "tls.handshake", "tls.change_cipher_spec", "tls.alert_message"]
+
+display_filter = 'ip.src == 161.246.72.218 and (tls.change_cipher_spec or tls.handshake or tls.alert_message)'
 
 i = 0
 limit = 80
@@ -119,7 +120,8 @@ for pkt in stream_tshark_output(display_filter, fields):
     if limit and i > limit:
         break
     num = pkt.get("frame_number")
-    print(num, pkt.get("_ws_expert_message"), pkt.get("http_time"))
+    # print(num, bool(pkt.get("tls_handshake")), bool(pkt.get("tls_change_cipher_spec")), bool(pkt.get("tls_alert_message")))
+    print(pkt)
     i += 1
 
 

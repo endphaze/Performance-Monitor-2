@@ -23,7 +23,7 @@ async def simulate_delay():
     start_time = time.time()
     seconds = 3
     # ใช้ asyncio.sleep แทน time.sleep เพื่อไม่ให้ Server หยุดทำงานทั้งระบบ
-    await asyncio.sleep(seconds)
+    # await asyncio.sleep(seconds)
     
     end_time = time.time()
     duration = end_time - start_time

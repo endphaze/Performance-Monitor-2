@@ -14,14 +14,14 @@ def myNetwork():
     
 
 
-    net.addNAT().configDefault()
-
+    
     # defaultRoute='via 192.168.1.254'
     # จำลอง Client และ Server พร้อมตั้ง Default Route ไปที่ NAT
     
     # สร้าง Switch
     s1 = net.addSwitch('s1')
-    
+    net.addNAT().configDefault()
+
     # จำลอง Client และ Server
     clients = [net.addHost(f'h{i}', ip=f'192.168.1.{i}/24') for i in range(1, 4)]
     servers = [net.addHost(f'srv{i}', ip=f'192.168.1.1{i}/24' ) for i in range(1, 3)]
@@ -63,15 +63,15 @@ def myNetwork():
     target_ip = "192.168.1.12"
 
     print("*** Running Background Tasks...")
-    srv1.cmd('./.venv_ubuntu/bin/python3 mininet_test/test3/server.py &')
-    srv2.cmd('./.venv_ubuntu/bin/python3 mininet_test/test3/server.py &')
+    srv1.cmd('./.venv/bin/python3 mininet_test/test3/server.py &')
+    srv2.cmd('./.venv/bin/python3 mininet_test/test3/server.py &')
     
-    h1.cmd('./.venv_ubuntu/bin/python3 mininet_test/test3/client.py &')
+    h1.cmd('./.venv/bin/python3 mininet_test/test3/client.py &')
     # ยิง hping3 ทดสอบระบบ 
-    h1.cmd(f'hping3 -S -p 8888 --rand-source -i u1000 {target_ip} &')
+    # h1.cmd(f'hping3 -S -p 8888 --rand-source -i u1000 {target_ip} &')
     
-    h2.cmd('./.venv_ubuntu/bin/python3 mininet_test/test3/client.py &')
-    h3.cmd('./.venv_ubuntu/bin/python3 mininet_test/test3/client.py &')
+    h2.cmd('./.venv/bin/python3 mininet_test/test3/client.py &')
+    h3.cmd('./.venv/bin/python3 mininet_test/test3/client.py &')
     
     # --- แจ้งเตือนเรื่องการดักจับ ---
     print(f"\n[INFO] Mirror is active on interface: vmirror0")

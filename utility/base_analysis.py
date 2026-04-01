@@ -14,7 +14,7 @@ class BaseAnalysis(ABC):
     def __init__(self, target_ip, ports):
         self.target_ip =  target_ip
         self.ports = ports
-        self.result_chunk = []
+        self.result_chunk = [] # หากสืบทอดแล้วให้ append ผลลัพธ์เข้า list นี้ เพื่อบันทึกผลลัพธ์เข้า MongoDB
         self.start_time = time.time()
         self.executed_time = 0
         module_path = self.__class__.__module__
@@ -28,7 +28,7 @@ class BaseAnalysis(ABC):
     def RowData(self):
         pass
 
-    @abstractmethod
+    @abstractmethod # จะใช้กับ pcap analyze ได้
     def display_filter(self) -> str:
         pass
     

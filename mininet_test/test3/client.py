@@ -23,7 +23,7 @@ try:
             send_request(ep)
         
         # หน่วงเวลา 0.1 วินาที ให้ Wireshark ได้จับลำดับแพ็กเก็ตได้ชัดเจน
-        time.sleep(0.5) 
+        time.sleep(0.1) 
 except KeyboardInterrupt:
     print("\nTest stopped by user.")
     

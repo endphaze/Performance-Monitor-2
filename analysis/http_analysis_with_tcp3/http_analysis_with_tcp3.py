@@ -30,7 +30,7 @@ class HTTP11_Analysis_By_TCP(BaseAnalysis):
     def fields(self):
         return ["frame.number", "ip.src", "ip.dst", "tcp.seq", "tcp.ack",
                 "tcp.len", "tcp.stream", "tcp.srcport", "tcp.dstport", "frame.time_epoch", "tcp.analysis.retransmission", 
-                "tcp.nxtseq"]
+                "tcp.nxtseq" , "tls.handshake", "tls.change_cipher_spec", "tls.alert_message"]
 
     def display_filter(self):
         if self.ports:
@@ -61,7 +61,9 @@ class HTTP11_Analysis_By_TCP(BaseAnalysis):
         tcp_nxtseq = int(pkt["tcp_nxtseq"])
         tcp_dstport = pkt["tcp_dstport"]
         tcp_srcport = pkt.get("tcp_srcport")
+        tcp_keep_alive = bool(pkt.get("tcp_analysis_keep_alive")) or  bool(pkt.get("tcp_analysis_keep_alive_ack"))
         stream_id = pkt["tcp_stream"]
+        is_tls_process = bool(pkt.get("tls_handshake")) or bool(pkt.get("tls_change_cipher_spec")) or bool(pkt.get("tls_alert_message"))
         retransmission = bool(pkt.get("tcp_analysis_retransmission")) or bool(pkt.get("tcp_analysis_fast_retransmission"))
         curr_time = float(pkt["frame_time_epoch"])
         
@@ -99,17 +101,19 @@ class HTTP11_Analysis_By_TCP(BaseAnalysis):
         
         
         # 1. ถ้ามี Data จาก Client -> Server ตัดสินว่าเป็น Request
-        if is_from_client and tcp_len > 0 and not (tcp_seq == (tcp_nxtseq-1)):
+        if is_from_client and tcp_len > 0 and not tcp_keep_alive and not is_tls_process:
             
             if stream_id in self.pending_requests:
                         
                 if not retransmission:
                     
                     if tcp_nxtseq > self.pending_requests[stream_id]["nxtseq"]:
+                        # print(f"{stream_id} update time {self.pending_requests[stream_id]["time"]} to {curr_time}")
+                        # self.pending_requests[stream_id]["time"] = curr_time
                         self.pending_requests[stream_id]["nxtseq"] = tcp_nxtseq
                         self.pending_requests[stream_id]["size"] += tcp_len
                         self.pending_requests[stream_id]["frame_number"] = frame_number
-                    
+                        
                     row_data.type = "request_continue"
                     
         
@@ -124,11 +128,11 @@ class HTTP11_Analysis_By_TCP(BaseAnalysis):
                     row_data.port = tcp_dstport
                     row_data.endpoint = ip_src
                     row_data.type = "request"
-                    print(f"pkt {frame_number} in stream id {stream_id} {Fore.CYAN}{Back.WHITE} is First Request Segment Found{Fore.RESET}{Back.RESET}")
+                    # print(f"pkt {frame_number} in stream id {stream_id} {Fore.CYAN}{Back.WHITE} is First Request Segment Found{Fore.RESET}{Back.RESET}")
                 
                 
         # 2. ถ้ามี Data จาก Server -> Client ตัดสินว่าเป็น Response
-        elif not is_from_client and tcp_len > 0 and not (tcp_seq == (tcp_nxtseq-1)):
+        elif not is_from_client and tcp_len > 0 and not tcp_keep_alive and not is_tls_process:
             if stream_id in self.pending_requests:
                 
                 # เมื่อพบ Response โดยไม่สนว่า Out of Order หรือไม่ 
@@ -137,8 +141,8 @@ class HTTP11_Analysis_By_TCP(BaseAnalysis):
                     request = self.pending_requests.pop(stream_id)
                     resp_time = round(curr_time-request["time"],6)*1000
                     
-                    print(f"pkt {frame_number} {Fore.GREEN} is response in pkt {request["frame_number"]} stream id {stream_id} with response time {resp_time}{Fore.RESET}{Back.RESET}")
-                    print(f"time {curr_time} - {request["time"]}")
+                    # print(f"pkt {frame_number} {Fore.GREEN} is response in pkt {request["frame_number"]} stream id {stream_id} with response time {resp_time}{Fore.RESET}{Back.RESET}")
+                    # print(f"time {curr_time} - {request["time"]}")
                     row_data.response_time = resp_time
                     row_data.type = "response"
                     row_data.request_size = request["size"]
